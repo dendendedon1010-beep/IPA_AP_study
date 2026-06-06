@@ -1,6 +1,7 @@
 export type ChoiceKey = 'ア' | 'イ' | 'ウ' | 'エ'
 export type Confidence = 'high' | 'normal' | 'low'
 export type Tab = 'home' | 'practice' | 'review' | 'analytics' | 'settings'
+export type PracticeMode = 'recommended' | 'field' | 'wrong' | 'low-confidence' | 'unanswered' | 'random-10' | 'mock-exam'
 
 export interface Choice {
   key: ChoiceKey
@@ -48,4 +49,27 @@ export interface Settings {
   dailyMinutes: number
   afternoonFields: string[]
   theme: 'light' | 'dark'
+}
+
+
+export interface SessionAnswer {
+  questionId: string
+  selectedAnswer: ChoiceKey
+  isCorrect: boolean
+  confidence: Confidence
+  elapsedSeconds: number
+}
+
+export interface PracticeSession {
+  sessionId: string
+  mode: PracticeMode
+  questionIds: string[]
+  currentIndex: number
+  startedAt: string
+  finishedAt: string | null
+  totalQuestions: number
+  correctCount: number
+  wrongCount: number
+  elapsedSeconds: number
+  answers: SessionAnswer[]
 }

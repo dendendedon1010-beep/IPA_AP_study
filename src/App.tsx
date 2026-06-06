@@ -11,6 +11,7 @@ import {
   Flame,
   Home,
   Lightbulb,
+  ClipboardCheck,
   ListFilter,
   LockKeyhole,
   Play,
@@ -23,10 +24,10 @@ import {
   X,
 } from 'lucide-react'
 import { questions } from './data/questions'
-import { loadHistory, loadSettings, resetData, saveHistory, saveSettings } from './lib/storage'
-import type { AnswerHistory, ChoiceKey, Confidence, Question, Settings, Tab } from './types'
+import { loadHistory, loadSession, loadSettings, resetData, saveHistory, saveSession, saveSettings } from './lib/storage'
+import type { AnswerHistory, ChoiceKey, Confidence, PracticeMode, PracticeSession, Question, Settings, Tab } from './types'
 
-const APP_VERSION = 'v1.2.0'
+const APP_VERSION = 'v1.3.0'
 const nav: { id: Tab; label: string; icon: typeof Home }[] = [
   { id: 'home', label: 'ホーム', icon: Home },
   { id: 'practice', label: '演習', icon: BookOpen },
@@ -76,18 +77,47 @@ function getFieldStats(history: AnswerHistory[]) {
   })
 }
 
+function getRecommendation(history: AnswerHistory[]) {
+  const stats = getFieldStats(history)
+  const answeredStats = stats.filter(item => item.count > 0)
+  const mostIncorrect = [...stats].sort((a, b) => b.incorrect - a.incorrect)[0]
+  const lowAccuracy = [...answeredStats].sort((a, b) => a.accuracy - b.accuracy)[0]
+  const mostUnanswered = [...stats].sort((a, b) => b.unanswered - a.unanswered)[0]
+  if (mostIncorrect?.incorrect) {
+    const items = questions.filter(question => question.field === mostIncorrect.field).slice(0, 5)
+    return { text: `${mostIncorrect.field}を${items.length}問復習しましょう`, items, mode: 'recommended' as PracticeMode }
+  }
+  if (lowAccuracy && lowAccuracy.accuracy < 80) {
+    const items = questions.filter(question => question.field === lowAccuracy.field).slice(0, 5)
+    return { text: `${lowAccuracy.field}の正答率を高めましょう`, items, mode: 'recommended' as PracticeMode }
+  }
+  if (mostUnanswered?.unanswered) {
+    const latest = getLatestAnswers(history)
+    const items = questions.filter(question => question.field === mostUnanswered.field && !latest.has(question.id)).slice(0, 10)
+    return { text: `未回答問題を${items.length}問進めましょう`, items, mode: 'recommended' as PracticeMode }
+  }
+  const security = questions.filter(question => question.field === '情報セキュリティ').slice(0, 5)
+  if (security.length) return { text: '情報セキュリティを確認しましょう', items: security, mode: 'recommended' as PracticeMode }
+  return { text: 'ランダム10問に挑戦しましょう', items: shuffle(questions).slice(0, 10), mode: 'random-10' as PracticeMode }
+}
+
+function shuffle(items: Question[]) {
+  return [...items].sort(() => Math.random() - 0.5)
+}
+
 function App() {
   const [tab, setTab] = useState<Tab>('home')
   const [history, setHistory] = useState<AnswerHistory[]>(loadHistory)
   const [settings, setSettings] = useState<Settings>(loadSettings)
-  const [session, setSession] = useState<Question[] | null>(null)
-  const [index, setIndex] = useState(0)
+  const [session, setSession] = useState<PracticeSession | null>(loadSession)
   const [selected, setSelected] = useState<ChoiceKey | null>(null)
   const [confidence, setConfidence] = useState<Confidence>('normal')
   const [result, setResult] = useState(false)
   const start = useRef(Date.now())
   const contentRef = useRef<HTMLElement>(null)
-  const currentQuestionId = session?.[index]?.id
+  const sessionQuestions = useMemo(() => session?.questionIds.map(id => questions.find(question => question.id === id)).filter((question): question is Question => Boolean(question)) ?? [], [session?.questionIds])
+  const currentQuestion = sessionQuestions[session?.currentIndex ?? 0]
+  const currentQuestionId = currentQuestion?.id
 
   const scrollToTop = () => {
     window.scrollTo({ top: 0, behavior: 'auto' })
@@ -96,13 +126,35 @@ function App() {
 
   useEffect(() => saveHistory(history), [history])
   useEffect(() => saveSettings(settings), [settings])
+  useEffect(() => saveSession(session), [session])
+  useEffect(() => { if (session) setTab('practice') }, [])
+  useEffect(() => {
+    const savedAnswer = session?.answers.find(answer => answer.questionId === currentQuestionId)
+    if (savedAnswer) {
+      setSelected(savedAnswer.selectedAnswer)
+      setConfidence(savedAnswer.confidence)
+      setResult(true)
+    }
+  }, [currentQuestionId, session?.answers])
   useEffect(scrollToTop, [tab])
-  useEffect(scrollToTop, [currentQuestionId])
+  useEffect(scrollToTop, [currentQuestionId, session?.finishedAt])
 
-  const startPractice = (items: Question[] = questions) => {
+  const startPractice = (items: Question[] = questions, mode: PracticeMode = 'field') => {
     if (!items.length) return
-    setSession(items)
-    setIndex(0)
+    const now = new Date().toISOString()
+    setSession({
+      sessionId: crypto.randomUUID(),
+      mode,
+      questionIds: items.map(question => question.id),
+      currentIndex: 0,
+      startedAt: now,
+      finishedAt: null,
+      totalQuestions: items.length,
+      correctCount: 0,
+      wrongCount: 0,
+      elapsedSeconds: 0,
+      answers: [],
+    })
     setSelected(null)
     setConfidence('normal')
     setResult(false)
@@ -111,32 +163,38 @@ function App() {
   }
 
   const answer = () => {
-    if (!selected || !session) return
-    const question = session[index]
+    if (!selected || !session || !currentQuestion) return
+    const elapsedSeconds = Math.max(1, Math.round((Date.now() - start.current) / 1000))
+    const isCorrect = selected === currentQuestion.correctAnswer
     const entry: AnswerHistory = {
       id: crypto.randomUUID(),
-      questionId: question.id,
+      questionId: currentQuestion.id,
       selectedAnswer: selected,
-      isCorrect: selected === question.correctAnswer,
+      isCorrect,
       confidence,
-      elapsedSeconds: Math.max(1, Math.round((Date.now() - start.current) / 1000)),
+      elapsedSeconds,
       answeredAt: new Date().toISOString(),
     }
     setHistory(current => [...current, entry])
+    setSession(current => current && ({
+      ...current,
+      correctCount: current.correctCount + (isCorrect ? 1 : 0),
+      wrongCount: current.wrongCount + (isCorrect ? 0 : 1),
+      elapsedSeconds: current.elapsedSeconds + elapsedSeconds,
+      answers: [...current.answers, { questionId: currentQuestion.id, selectedAnswer: selected, isCorrect, confidence, elapsedSeconds }],
+    }))
     setResult(true)
   }
 
   const next = () => {
     if (!session) return
-    if (index >= session.length - 1) {
-      setSession(null)
-      setIndex(0)
+    if (session.currentIndex >= session.totalQuestions - 1) {
+      setSession(current => current && ({ ...current, finishedAt: new Date().toISOString() }))
       setSelected(null)
       setResult(false)
-      setTab('home')
       return
     }
-    setIndex(current => current + 1)
+    setSession(current => current && ({ ...current, currentIndex: current.currentIndex + 1 }))
     setSelected(null)
     setResult(false)
     setConfidence('normal')
@@ -154,7 +212,7 @@ function App() {
     if (id !== 'practice') leaveSession()
   }
 
-  const title = session ? '午前問題 演習' : nav.find(item => item.id === tab)?.label ?? ''
+  const title = session?.finishedAt ? '演習結果' : session ? (session.mode === 'mock-exam' ? '模擬試験モード' : '午前問題 演習') : nav.find(item => item.id === tab)?.label ?? ''
 
   return (
     <div className={settings.theme === 'dark' ? 'dark bg-[#101713]' : ''}>
@@ -172,7 +230,7 @@ function App() {
             </div>
           </div>
           {session ? (
-            <span className="tabular rounded-full bg-white px-3 py-1.5 text-xs font-bold shadow-sm dark:bg-white/10">{index + 1} / {session.length}</span>
+            <span className="tabular rounded-full bg-white px-3 py-1.5 text-xs font-bold shadow-sm dark:bg-white/10">{session.finishedAt ? '完了' : `${session.currentIndex + 1} / ${session.totalQuestions}`}</span>
           ) : (
             <div className="relative grid size-10 place-items-center rounded-full bg-white shadow-sm dark:bg-white/10">
               <Flame size={19} className="text-orange-500" />
@@ -183,9 +241,20 @@ function App() {
 
         <main ref={contentRef} className={`min-w-0 max-w-full overflow-x-hidden px-4 pt-[92px] ${session ? 'pb-[138px]' : 'pb-[104px]'}`}>
           {tab === 'home' && <HomeScreen history={history} onStart={startPractice} onReview={() => setTab('review')} />}
-          {tab === 'practice' && (session ? (
-            <QuestionScreen question={session[index]} selected={selected} setSelected={setSelected} result={result} confidence={confidence} setConfidence={setConfidence} />
-          ) : <PracticeMenu onStart={startPractice} />)}
+          {tab === 'practice' && (session?.finishedAt ? (
+            <ResultScreen
+              session={session}
+              questions={sessionQuestions}
+              onStart={startPractice}
+              onHome={() => { leaveSession(); setTab('home') }}
+              onAnalytics={() => { leaveSession(); setTab('analytics') }}
+            />
+          ) : session && currentQuestion ? (
+            <>
+              {session.mode === 'mock-exam' && <div className="mb-3 flex items-center justify-between rounded-xl bg-white px-4 py-3 text-[11px] font-bold shadow-sm dark:bg-white/5"><span>回答済み {session.answers.length} / {session.totalQuestions}</span><span className="text-slate-400">正解 {session.correctCount}・不正解 {session.wrongCount}</span></div>}
+              <QuestionScreen question={currentQuestion} selected={selected} setSelected={setSelected} result={result} confidence={confidence} setConfidence={setConfidence} />
+            </>
+          ) : <PracticeMenu history={history} onStart={startPractice} />)}
           {tab === 'review' && <ReviewScreen history={history} onStart={startPractice} />}
           {tab === 'analytics' && <Analytics history={history} />}
           {tab === 'settings' && (
@@ -201,11 +270,11 @@ function App() {
           )}
         </main>
 
-        {session && tab === 'practice' ? (
+        {session && !session.finishedAt && tab === 'practice' ? (
           <div className="safe-bottom fixed bottom-0 left-1/2 z-50 w-full max-w-[480px] -translate-x-1/2 border-t border-black/5 bg-white/95 px-4 pt-3 backdrop-blur dark:bg-[#18211c]/95">
             {result ? (
               <button onClick={next} className="flex h-14 w-full items-center justify-center gap-2 rounded-2xl bg-ink font-bold text-white shadow-lg dark:bg-lime dark:text-ink">
-                {index === session.length - 1 ? '結果をみる' : '次の問題へ'}<ChevronRight size={20} />
+                {session.currentIndex === session.totalQuestions - 1 ? '結果をみる' : '次の問題へ'}<ChevronRight size={20} />
               </button>
             ) : (
               <button disabled={!selected} onClick={answer} className="h-14 w-full rounded-2xl bg-ink font-bold text-white shadow-lg disabled:bg-slate-200 disabled:text-slate-400 dark:bg-lime dark:text-ink">
@@ -229,7 +298,7 @@ function App() {
   )
 }
 
-function HomeScreen({ history, onStart, onReview }: { history: AnswerHistory[]; onStart: (items?: Question[]) => void; onReview: () => void }) {
+function HomeScreen({ history, onStart, onReview }: { history: AnswerHistory[]; onStart: (items?: Question[], mode?: PracticeMode) => void; onReview: () => void }) {
   const stats = useMemo(() => getFieldStats(history), [history])
   const latest = useMemo(() => getLatestAnswers(history), [history])
   const accuracy = history.length ? Math.round((history.filter(answer => answer.isCorrect).length / history.length) * 100) : 0
@@ -241,16 +310,7 @@ function HomeScreen({ history, onStart, onReview }: { history: AnswerHistory[]; 
   const ranked = stats.filter(item => item.count > 0)
   const weak = [...ranked].sort((a, b) => a.accuracy - b.accuracy || b.incorrect - a.incorrect).slice(0, 3)
   const strong = [...ranked].sort((a, b) => b.accuracy - a.accuracy || b.count - a.count).slice(0, 3)
-  const mostIncorrect = [...stats].sort((a, b) => b.incorrect - a.incorrect)[0]
-  const lowAccuracy = [...ranked].sort((a, b) => a.accuracy - b.accuracy)[0]
-  const mostUnanswered = [...stats].sort((a, b) => b.unanswered - a.unanswered)[0]
-  const recommendation = mostIncorrect?.incorrect
-    ? `${mostIncorrect.field}を${Math.min(5, Math.max(1, mostIncorrect.incorrect))}問復習しましょう`
-    : lowAccuracy && lowAccuracy.accuracy < 80
-      ? `${lowAccuracy.field}の正答率が低めです`
-      : mostUnanswered?.unanswered
-        ? `未回答の${mostUnanswered.field}問題があります`
-        : '情報セキュリティを5問復習しましょう'
+  const recommendation = useMemo(() => getRecommendation(history), [history])
 
   return (
     <div className="space-y-5">
@@ -258,12 +318,12 @@ function HomeScreen({ history, onStart, onReview }: { history: AnswerHistory[]; 
         <div className="flex items-start justify-between">
           <div>
             <p className="text-[11px] font-bold text-lime">今日のおすすめ学習</p>
-            <h2 className="mt-2 max-w-[280px] text-xl font-bold leading-snug">{recommendation}</h2>
+            <h2 className="mt-2 max-w-[280px] text-xl font-bold leading-snug">{recommendation.text}</h2>
           </div>
           <div className="grid size-12 place-items-center rounded-2xl bg-white/10"><Sparkles className="text-lime" /></div>
         </div>
-        <button onClick={() => onStart()} className="mt-5 flex h-12 w-full items-center justify-center gap-2 rounded-2xl bg-lime font-bold text-ink">
-          <Play size={18} fill="currentColor" />午前問題を始める
+        <button onClick={() => onStart(recommendation.items, recommendation.mode)} className="mt-5 flex h-12 w-full items-center justify-center gap-2 rounded-2xl bg-lime font-bold text-ink">
+          <Play size={18} fill="currentColor" />おすすめ演習を始める
         </button>
       </section>
 
@@ -306,26 +366,97 @@ function Ranking({ title, items, empty, tone }: { title: string; items: ReturnTy
   )
 }
 
-function PracticeMenu({ onStart }: { onStart: (items?: Question[]) => void }) {
+function PracticeMenu({ history, onStart }: { history: AnswerHistory[]; onStart: (items?: Question[], mode?: PracticeMode) => void }) {
+  const latest = useMemo(() => getLatestAnswers(history), [history])
+  const recommendation = useMemo(() => getRecommendation(history), [history])
+  const wrong = questions.filter(question => latest.get(question.id)?.isCorrect === false)
+  const lowConfidence = questions.filter(question => latest.get(question.id)?.confidence === 'low')
+  const unanswered = questions.filter(question => !latest.has(question.id))
+  const morningQuestions = questions.filter(question => question.examType === 'morning')
+  const modes = [
+    { title: '今日のおすすめ', description: recommendation.text, icon: Sparkles, items: recommendation.items, mode: recommendation.mode, color: 'bg-lime text-ink' },
+    { title: '不正解復習', description: '直近で間違えた問題', icon: X, items: wrong, mode: 'wrong' as PracticeMode, color: 'bg-rose-50 text-rose-600' },
+    { title: '自信なし復習', description: '自信なしで回答した問題', icon: CircleHelp, items: lowConfidence, mode: 'low-confidence' as PracticeMode, color: 'bg-amber-50 text-amber-600' },
+    { title: '未回答問題', description: 'まだ解いていない問題', icon: Lightbulb, items: unanswered, mode: 'unanswered' as PracticeMode, color: 'bg-sky-50 text-sky-600' },
+    { title: 'ランダム10問', description: '全分野からランダムに出題', icon: RotateCcw, items: shuffle(questions).slice(0, 10), mode: 'random-10' as PracticeMode, color: 'bg-violet-50 text-violet-600' },
+    { title: '模擬試験モード', description: `午前問題から${Math.min(10, morningQuestions.length)}問`, icon: ClipboardCheck, items: shuffle(morningQuestions).slice(0, 10), mode: 'mock-exam' as PracticeMode, color: 'bg-emerald-50 text-emerald-600' },
+  ]
   return (
     <div className="space-y-4">
       <section className="rounded-[28px] bg-ink p-5 text-white">
-        <p className="text-[11px] font-bold text-lime">全 {questions.length} 問</p>
-        <h2 className="mt-2 text-xl font-bold">午前問題 総合演習</h2>
-        <p className="mt-2 text-xs leading-relaxed text-white/60">全分野を通して、知識の定着と苦手分野を確認します。</p>
-        <button onClick={() => onStart(questions)} className="mt-5 flex h-12 w-full items-center justify-center gap-2 rounded-2xl bg-lime font-bold text-ink"><Play size={18} />全問題を始める</button>
+        <p className="text-[11px] font-bold text-lime">PRACTICE MODE</p>
+        <h2 className="mt-2 text-xl font-bold">目的に合わせて演習</h2>
+        <p className="mt-2 text-xs leading-relaxed text-white/60">復習状況や学習ペースに合う問題セットを選べます。</p>
+      </section>
+      <section className="space-y-2">
+        {modes.map(({ title, description, icon: Icon, items, mode, color }) => (
+          <button key={title} disabled={!items.length} onClick={() => onStart(items, mode)} className="flex min-h-[72px] w-full items-center gap-3 rounded-[20px] bg-white p-4 text-left shadow-sm disabled:opacity-50 dark:bg-white/5">
+            <span className={`grid size-11 shrink-0 place-items-center rounded-xl ${color}`}><Icon size={20} /></span>
+            <span className="min-w-0 flex-1"><span className="block text-sm font-bold">{title}</span><span className="mt-1 block text-[10px] leading-relaxed text-slate-400">{description}</span></span>
+            <span className="flex shrink-0 items-center gap-1 text-xs font-bold text-slate-400">{items.length}問<ChevronRight size={16} /></span>
+          </button>
+        ))}
       </section>
       <section className="rounded-[24px] bg-white p-5 dark:bg-white/5">
-        <div className="mb-4 flex items-center gap-2 font-bold"><ListFilter size={19} className="text-moss dark:text-lime" />分野を選ぶ</div>
+        <div className="mb-4 flex items-center gap-2 font-bold"><ListFilter size={19} className="text-moss dark:text-lime" />分野別演習</div>
         <div className="space-y-2">
           {allFields.map(field => {
             const items = questions.filter(question => question.field === field)
-            return <button key={field} onClick={() => onStart(items)} className="flex min-h-12 w-full items-center justify-between rounded-xl bg-slate-50 px-4 text-left text-xs font-bold dark:bg-white/5"><span>{field}</span><span className="flex items-center gap-1 text-slate-400">{items.length}問<ChevronRight size={16} /></span></button>
+            return <button key={field} onClick={() => onStart(items, 'field')} className="flex min-h-12 w-full items-center justify-between rounded-xl bg-slate-50 px-4 text-left text-xs font-bold dark:bg-white/5"><span>{field}</span><span className="flex items-center gap-1 text-slate-400">{items.length}問<ChevronRight size={16} /></span></button>
           })}
         </div>
       </section>
     </div>
   )
+}
+
+function ResultScreen({ session, questions: sessionQuestions, onStart, onHome, onAnalytics }: { session: PracticeSession; questions: Question[]; onStart: (items: Question[], mode: PracticeMode) => void; onHome: () => void; onAnalytics: () => void }) {
+  const accuracy = session.totalQuestions ? Math.round((session.correctCount / session.totalQuestions) * 100) : 0
+  const wrongIds = new Set(session.answers.filter(answer => !answer.isCorrect).map(answer => answer.questionId))
+  const lowConfidenceIds = new Set(session.answers.filter(answer => answer.confidence === 'low').map(answer => answer.questionId))
+  const wrongQuestions = sessionQuestions.filter(question => wrongIds.has(question.id))
+  const lowConfidenceQuestions = sessionQuestions.filter(question => lowConfidenceIds.has(question.id))
+  const fieldResults = allFields.map(field => {
+    const ids = new Set(sessionQuestions.filter(question => question.field === field).map(question => question.id))
+    const answers = session.answers.filter(answer => ids.has(answer.questionId))
+    return { field, count: answers.length, accuracy: answers.length ? Math.round((answers.filter(answer => answer.isCorrect).length / answers.length) * 100) : 0 }
+  }).filter(item => item.count)
+  const weakest = [...fieldResults].sort((a, b) => a.accuracy - b.accuracy)[0]
+  const recommendation = wrongQuestions.length
+    ? `${wrongQuestions.length}問の不正解を復習しましょう`
+    : weakest && weakest.accuracy < 80
+      ? `${weakest.field}の正答率が低めです。復習をおすすめします`
+      : `${fieldResults[0]?.field ?? '今回の範囲'}は安定しています`
+  return (
+    <div className="space-y-4">
+      <section className="rounded-[28px] bg-ink p-5 text-white">
+        <p className="text-[11px] font-bold text-lime">SESSION COMPLETE</p>
+        <div className="mt-3 flex items-end justify-between"><div><p className="text-xs text-white/60">正答率</p><p className="tabular text-4xl font-bold">{accuracy}%</p></div><ClipboardCheck size={42} className="text-lime" /></div>
+        <div className="mt-5 grid grid-cols-3 gap-2"><ResultMetric label="正解" value={`${session.correctCount}問`} /><ResultMetric label="不正解" value={`${session.wrongCount}問`} /><ResultMetric label="回答時間" value={`${Math.floor(session.elapsedSeconds / 60)}分${session.elapsedSeconds % 60}秒`} /></div>
+      </section>
+      <section className="rounded-[24px] bg-white p-5 shadow-sm dark:bg-white/5">
+        <h3 className="font-bold">分野別の正答率</h3>
+        <div className="mt-4 space-y-3">{fieldResults.map(item => <div key={item.field}><div className="flex justify-between text-xs"><span className="font-bold">{item.field}</span><span className="tabular font-bold">{item.accuracy}%</span></div><div className="mt-2 h-1.5 rounded-full bg-slate-100 dark:bg-white/10"><div className="h-full rounded-full bg-moss dark:bg-lime" style={{ width: `${item.accuracy}%` }} /></div></div>)}</div>
+      </section>
+      <ResultQuestionList title="間違えた問題" items={wrongQuestions} empty="今回の不正解はありません" />
+      <ResultQuestionList title="自信なし問題" items={lowConfidenceQuestions} empty="自信なし問題はありません" />
+      <section className="rounded-[22px] bg-lime/30 p-4"><p className="flex items-center gap-2 text-xs font-bold text-moss dark:text-lime"><Sparkles size={17} />復習おすすめ</p><p className="mt-2 text-sm font-bold leading-relaxed">{recommendation}</p></section>
+      <div className="space-y-2">
+        <button disabled={!wrongQuestions.length} onClick={() => onStart(wrongQuestions, 'wrong')} className="h-12 w-full rounded-xl bg-ink text-sm font-bold text-white disabled:bg-slate-200 disabled:text-slate-400 dark:bg-lime dark:text-ink">間違えた問題だけ復習</button>
+        <button disabled={!lowConfidenceQuestions.length} onClick={() => onStart(lowConfidenceQuestions, 'low-confidence')} className="h-12 w-full rounded-xl border border-ink text-sm font-bold disabled:border-slate-200 disabled:text-slate-400 dark:border-lime">自信なし問題だけ復習</button>
+        <button onClick={() => onStart(session.mode === 'random-10' ? shuffle(questions).slice(0, 10) : session.mode === 'mock-exam' ? shuffle(questions.filter(question => question.examType === 'morning')).slice(0, 10) : sessionQuestions, session.mode)} className="h-12 w-full rounded-xl bg-white text-sm font-bold shadow-sm dark:bg-white/5">同じ条件でもう一度</button>
+        <div className="grid grid-cols-2 gap-2"><button onClick={onHome} className="h-12 rounded-xl bg-white text-sm font-bold shadow-sm dark:bg-white/5">ホームへ戻る</button><button onClick={onAnalytics} className="h-12 rounded-xl bg-white text-sm font-bold shadow-sm dark:bg-white/5">分析を見る</button></div>
+      </div>
+    </div>
+  )
+}
+
+function ResultMetric({ label, value }: { label: string; value: string }) {
+  return <div className="rounded-xl bg-white/10 p-2 text-center"><p className="text-[9px] text-white/60">{label}</p><p className="tabular mt-1 text-xs font-bold">{value}</p></div>
+}
+
+function ResultQuestionList({ title, items, empty }: { title: string; items: Question[]; empty: string }) {
+  return <section className="rounded-[24px] bg-white p-5 shadow-sm dark:bg-white/5"><div className="flex items-center justify-between"><h3 className="font-bold">{title}</h3><span className="tabular text-xs font-bold text-slate-400">{items.length}問</span></div>{items.length ? <ul className="mt-3 space-y-2">{items.map(question => <li key={question.id} className="rounded-xl bg-slate-50 p-3 text-xs dark:bg-white/5"><span className={`mr-2 rounded-full px-2 py-1 text-[9px] font-bold ${fieldColor[question.field] ?? 'bg-slate-100'}`}>{question.field}</span><span className="leading-relaxed">問{question.questionNumber} {question.questionText}</span></li>)}</ul> : <p className="mt-3 text-xs text-slate-400">{empty}</p>}</section>
 }
 
 function QuestionScreen({ question, selected, setSelected, result, confidence, setConfidence }: { question: Question; selected: ChoiceKey | null; setSelected: (key: ChoiceKey) => void; result: boolean; confidence: Confidence; setConfidence: (value: Confidence) => void }) {
@@ -402,15 +533,15 @@ function ExplanationBlock({ title, icon: Icon, text, tone }: { title: string; ic
   return <div><p className="flex items-center gap-2 text-xs font-bold"><Icon size={17} className={tone} />{title}</p><p className="mt-2 text-xs leading-6 text-slate-600 dark:text-slate-300">{text}</p></div>
 }
 
-function ReviewScreen({ history, onStart }: { history: AnswerHistory[]; onStart: (items: Question[]) => void }) {
+function ReviewScreen({ history, onStart }: { history: AnswerHistory[]; onStart: (items: Question[], mode?: PracticeMode) => void }) {
   const latest = useMemo(() => getLatestAnswers(history), [history])
   const stats = useMemo(() => getFieldStats(history), [history])
   const weakFields = new Set(stats.filter(item => item.count > 0 && item.accuracy < 60).map(item => item.field))
   const filters = [
-    { title: '不正解のみ', description: '最後の解答が不正解だった問題', icon: X, items: questions.filter(question => latest.get(question.id)?.isCorrect === false), color: 'bg-rose-50 text-rose-600' },
-    { title: '自信なしのみ', description: '自信なしで回答した問題', icon: CircleHelp, items: questions.filter(question => latest.get(question.id)?.confidence === 'low'), color: 'bg-amber-50 text-amber-600' },
-    { title: '苦手分野のみ', description: '正答率60%未満の分野', icon: TrendingUp, items: questions.filter(question => weakFields.has(question.field)), color: 'bg-violet-50 text-violet-600' },
-    { title: '未回答のみ', description: 'まだ一度も解いていない問題', icon: Sparkles, items: questions.filter(question => !latest.has(question.id)), color: 'bg-sky-50 text-sky-600' },
+    { title: '不正解のみ', mode: 'wrong' as PracticeMode, description: '最後の解答が不正解だった問題', icon: X, items: questions.filter(question => latest.get(question.id)?.isCorrect === false), color: 'bg-rose-50 text-rose-600' },
+    { title: '自信なしのみ', mode: 'low-confidence' as PracticeMode, description: '自信なしで回答した問題', icon: CircleHelp, items: questions.filter(question => latest.get(question.id)?.confidence === 'low'), color: 'bg-amber-50 text-amber-600' },
+    { title: '苦手分野のみ', mode: 'field' as PracticeMode, description: '正答率60%未満の分野', icon: TrendingUp, items: questions.filter(question => weakFields.has(question.field)), color: 'bg-violet-50 text-violet-600' },
+    { title: '未回答のみ', mode: 'unanswered' as PracticeMode, description: 'まだ一度も解いていない問題', icon: Sparkles, items: questions.filter(question => !latest.has(question.id)), color: 'bg-sky-50 text-sky-600' },
   ]
 
   return (
@@ -419,10 +550,10 @@ function ReviewScreen({ history, onStart }: { history: AnswerHistory[]; onStart:
         <div className="flex items-center gap-3"><div className="grid size-11 place-items-center rounded-xl bg-lime text-ink"><RotateCcw size={22} /></div><div><p className="text-[10px] font-bold text-lime">REVIEW</p><h2 className="font-bold">復習対象を絞り込む</h2></div></div>
         <p className="mt-4 text-xs leading-relaxed text-white/60">直近の解答結果と自信度から、今取り組む問題を選べます。</p>
       </section>
-      {filters.map(({ title, description, icon: Icon, items, color }) => (
+      {filters.map(({ title, description, icon: Icon, items, mode, color }) => (
         <section key={title} className="rounded-[22px] bg-white p-4 shadow-sm dark:bg-white/5">
           <div className="flex items-center gap-3"><div className={`grid size-10 place-items-center rounded-xl ${color}`}><Icon size={19} /></div><div className="min-w-0 flex-1"><h3 className="text-sm font-bold">{title}</h3><p className="mt-0.5 text-[10px] text-slate-400">{description}</p></div><span className="tabular text-sm font-bold">{items.length}問</span></div>
-          <button disabled={!items.length} onClick={() => onStart(items)} className="mt-4 flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-ink text-xs font-bold text-white disabled:bg-slate-100 disabled:text-slate-400 dark:bg-lime dark:text-ink dark:disabled:bg-white/10 dark:disabled:text-slate-500">この条件で演習する<ChevronRight size={16} /></button>
+          <button disabled={!items.length} onClick={() => onStart(items, mode)} className="mt-4 flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-ink text-xs font-bold text-white disabled:bg-slate-100 disabled:text-slate-400 dark:bg-lime dark:text-ink dark:disabled:bg-white/10 dark:disabled:text-slate-500">この条件で演習する<ChevronRight size={16} /></button>
         </section>
       ))}
     </div>
