@@ -26,7 +26,7 @@ import { questions } from './data/questions'
 import { loadHistory, loadSettings, resetData, saveHistory, saveSettings } from './lib/storage'
 import type { AnswerHistory, ChoiceKey, Confidence, Question, Settings, Tab } from './types'
 
-const APP_VERSION = 'v1.1.0'
+const APP_VERSION = 'v1.2.0'
 const nav: { id: Tab; label: string; icon: typeof Home }[] = [
   { id: 'home', label: 'ホーム', icon: Home },
   { id: 'practice', label: '演習', icon: BookOpen },
@@ -86,9 +86,18 @@ function App() {
   const [confidence, setConfidence] = useState<Confidence>('normal')
   const [result, setResult] = useState(false)
   const start = useRef(Date.now())
+  const contentRef = useRef<HTMLElement>(null)
+  const currentQuestionId = session?.[index]?.id
+
+  const scrollToTop = () => {
+    window.scrollTo({ top: 0, behavior: 'auto' })
+    contentRef.current?.scrollTo({ top: 0, behavior: 'auto' })
+  }
 
   useEffect(() => saveHistory(history), [history])
   useEffect(() => saveSettings(settings), [settings])
+  useEffect(scrollToTop, [tab])
+  useEffect(scrollToTop, [currentQuestionId])
 
   const startPractice = (items: Question[] = questions) => {
     if (!items.length) return
@@ -172,7 +181,7 @@ function App() {
           )}
         </header>
 
-        <main className={`px-4 pt-[92px] ${session ? 'pb-[138px]' : 'pb-[104px]'}`}>
+        <main ref={contentRef} className={`min-w-0 max-w-full overflow-x-hidden px-4 pt-[92px] ${session ? 'pb-[138px]' : 'pb-[104px]'}`}>
           {tab === 'home' && <HomeScreen history={history} onStart={startPractice} onReview={() => setTab('review')} />}
           {tab === 'practice' && (session ? (
             <QuestionScreen question={session[index]} selected={selected} setSelected={setSelected} result={result} confidence={confidence} setConfidence={setConfidence} />
@@ -454,10 +463,10 @@ function SettingsScreen({ value, onChange, onReset }: { value: Settings; onChang
   const [confirm, setConfirm] = useState(false)
   const options = ['情報セキュリティ', 'ネットワーク', 'データベース', 'システム開発', 'プロジェクトマネジメント']
   return (
-    <div className="space-y-4">
+    <div className="min-w-0 max-w-full space-y-4 overflow-x-hidden">
       <SettingCard title="学習目標" icon={Target}>
-        <label className="block text-xs font-bold text-slate-500">試験予定日<input type="date" value={value.examDate} onChange={event => onChange({ ...value, examDate: event.target.value })} className="mt-2 h-12 w-full rounded-xl border-0 bg-slate-100 px-3 font-medium text-ink outline-none dark:bg-white/10 dark:text-white" /></label>
-        <label className="mt-4 block text-xs font-bold text-slate-500">1日の目標学習時間<div className="mt-2 flex gap-2">{[15, 30, 45, 60].map(minutes => <button key={minutes} onClick={() => onChange({ ...value, dailyMinutes: minutes })} className={`h-11 flex-1 rounded-xl text-xs font-bold ${value.dailyMinutes === minutes ? 'bg-moss text-white' : 'bg-slate-100 text-slate-500 dark:bg-white/10'}`}>{minutes}分</button>)}</div></label>
+        <label className="block min-w-0 max-w-full text-xs font-bold text-slate-500">試験予定日<input type="date" value={value.examDate} onChange={event => onChange({ ...value, examDate: event.target.value })} className="mt-2 block h-12 w-full min-w-0 max-w-full appearance-none rounded-xl border-0 bg-slate-100 px-3 font-medium text-ink outline-none dark:bg-white/10 dark:text-white" /></label>
+        <label className="mt-4 block min-w-0 max-w-full text-xs font-bold text-slate-500">1日の目標学習時間<div className="mt-2 flex min-w-0 flex-wrap gap-2">{[15, 30, 45, 60].map(minutes => <button key={minutes} onClick={() => onChange({ ...value, dailyMinutes: minutes })} className={`h-11 min-w-[64px] flex-1 rounded-xl text-xs font-bold ${value.dailyMinutes === minutes ? 'bg-moss text-white' : 'bg-slate-100 text-slate-500 dark:bg-white/10'}`}>{minutes}分</button>)}</div></label>
       </SettingCard>
       <SettingCard title="午後の選択候補" icon={BookOpen}><div className="flex flex-wrap gap-2">{options.map(option => { const active = value.afternoonFields.includes(option); return <button key={option} onClick={() => onChange({ ...value, afternoonFields: active ? value.afternoonFields.filter(field => field !== option) : [...value.afternoonFields, option] })} className={`rounded-full px-3 py-2 text-xs font-bold ${active ? 'bg-moss text-white' : 'bg-slate-100 text-slate-500 dark:bg-white/10'}`}>{active && '✓ '}{option}</button> })}</div></SettingCard>
       <SettingCard title="表示テーマ" icon={Sparkles}><div className="grid grid-cols-2 gap-2">{(['light', 'dark'] as const).map(theme => <button key={theme} onClick={() => onChange({ ...value, theme })} className={`h-12 rounded-xl text-xs font-bold ${value.theme === theme ? 'bg-ink text-white ring-2 ring-lime ring-offset-2' : 'bg-slate-100 text-slate-500 dark:bg-white/10'}`}>{theme === 'light' ? 'ライト' : 'ダーク'}</button>)}</div></SettingCard>
@@ -472,7 +481,7 @@ function SettingsScreen({ value, onChange, onReset }: { value: Settings; onChang
 }
 
 function SettingCard({ title, icon: Icon, children }: { title: string; icon: typeof Home; children: React.ReactNode }) {
-  return <section className="rounded-[24px] bg-white p-5 shadow-sm dark:bg-white/5"><div className="mb-5 flex items-center gap-2 font-bold"><Icon size={18} className="text-moss dark:text-lime" />{title}</div>{children}</section>
+  return <section className="min-w-0 max-w-full overflow-hidden rounded-[24px] bg-white p-5 shadow-sm dark:bg-white/5"><div className="mb-5 flex items-center gap-2 font-bold"><Icon size={18} className="text-moss dark:text-lime" />{title}</div>{children}</section>
 }
 
 export default App
