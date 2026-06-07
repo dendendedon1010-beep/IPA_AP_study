@@ -29,7 +29,7 @@ import { questions } from './data/questions'
 import { defaultSettings, loadBookmarks, loadHistory, loadSession, loadSettings, resetData, saveBookmarks, saveHistory, saveSession, saveSettings } from './lib/storage'
 import type { AnswerHistory, BookmarkStore, ChoiceKey, Confidence, MistakeTag, PracticeMode, PracticeSession, Question, ReviewPriority, Settings, Tab } from './types'
 
-const APP_VERSION = 'v1.5.0'
+const APP_VERSION = 'v1.6.0'
 const nav: { id: Tab; label: string; icon: typeof Home }[] = [
   { id: 'home', label: 'ホーム', icon: Home },
   { id: 'practice', label: '演習', icon: BookOpen },
@@ -728,7 +728,7 @@ function ExplanationBlock({ title, icon: Icon, text, tone }: { title: string; ic
 function ReviewScreen({ history, onStart }: { history: AnswerHistory[]; onStart: (items: Question[], mode?: PracticeMode) => void }) {
   const latest = useMemo(() => getLatestAnswers(history), [history])
   const [filter, setFilter] = useState<'high' | 'medium-up' | 'wrong' | 'low-confidence' | 'unanswered' | 'field' | 'mistake'>('high')
-  const [field, setField] = useState(allFields[0] ?? '')
+  const [field, setField] = useState<string>(allFields[0] ?? '')
   const [mistakeTag, setMistakeTag] = useState<MistakeTag>(mistakeTags[0])
   const filtered = questions.filter(question => {
     const answer = latest.get(question.id)

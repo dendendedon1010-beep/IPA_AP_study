@@ -1,3 +1,4 @@
+import { resolveQuestionId } from '../data/questions'
 import type { AnswerHistory, BookmarkStore, PracticeSession, Settings } from '../types'
 
 const HISTORY_KEY = 'ap-study-history-v1'
@@ -54,7 +55,7 @@ const isAnswerHistory = (value: unknown): value is AnswerHistory => isRecord(val
 export const loadBookmarks = (): BookmarkStore => {
   try {
     const value: unknown = JSON.parse(localStorage.getItem(BOOKMARKS_KEY) || '[]')
-    return Array.isArray(value) ? [...new Set(value.filter((id): id is string => typeof id === 'string' && Boolean(id)))] : []
+    return Array.isArray(value) ? [...new Set(value.filter((id): id is string => typeof id === 'string' && Boolean(id)).map(resolveQuestionId))] : []
   } catch {
     return []
   }
@@ -67,7 +68,7 @@ export const saveBookmarks = (value: BookmarkStore) => {
 export const loadHistory = (): AnswerHistory[] => {
   try {
     const value: unknown = JSON.parse(localStorage.getItem(HISTORY_KEY) || '[]')
-    return Array.isArray(value) ? value.filter(isAnswerHistory) : []
+    return Array.isArray(value) ? value.filter(isAnswerHistory).map(answer => ({ ...answer, questionId: resolveQuestionId(answer.questionId) })) : []
   } catch {
     return []
   }
@@ -105,7 +106,13 @@ export const loadSession = (): PracticeSession | null => {
   try {
     const value: unknown = JSON.parse(localStorage.getItem(SESSION_KEY) || 'null')
     if (value === null) return null
-    if (isPracticeSession(value)) return value
+    if (isPracticeSession(value)) {
+      return {
+        ...value,
+        questionIds: value.questionIds.map(resolveQuestionId),
+        answers: value.answers.map(answer => ({ ...answer, questionId: resolveQuestionId(answer.questionId) })),
+      }
+    }
   } catch {
     // Remove only the broken current session; history and settings stay untouched.
   }

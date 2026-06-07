@@ -1,3 +1,5 @@
+import type { FieldName } from './data/fields'
+
 export type ChoiceKey = 'ア' | 'イ' | 'ウ' | 'エ'
 export type Confidence = 'high' | 'normal' | 'low'
 export type MistakeTag = '用語理解不足' | '問題文の読み落とし' | '選択肢の比較ミス' | '計算ミス' | '暗記不足' | '知識の取り違え'
@@ -20,11 +22,12 @@ export interface Explanation {
 
 export interface Question {
   id: string
+  legacyIds?: string[]
   examYear: number
   examSeason: '春期' | '秋期'
   examType: 'morning' | 'afternoon'
   questionNumber: number
-  field: string
+  field: FieldName
   subField: string
   questionText: string
   choices: Choice[]
