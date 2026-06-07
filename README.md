@@ -37,3 +37,9 @@ npm run build
 ## 出典
 
 収録問題の出典は、IPA「令和6年度 秋期 応用情報技術者試験 午前 問題冊子」です。各問題画面からIPA公式PDFを確認できます。解説は本アプリが作成したもので、IPA公式解説ではありません。
+
+## GitHub Pages の設定
+
+GitHub Settings → Pages → Source は **GitHub Actions** に設定してください。`Deploy from a branch` を選ぶと、ViteでビルドされていないHTMLが配信され、「読み込み中です」のまま止まる可能性があります。
+
+公開ページのHTMLに `/src/main.tsx` が見えている場合は設定ミスの可能性が高く、正常なビルド済みHTMLでは `/IPA_AP_STUDY/assets/...` のJavaScriptやCSSが読み込まれます。
