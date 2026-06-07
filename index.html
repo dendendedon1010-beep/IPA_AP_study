@@ -66,16 +66,21 @@
           allKeys.forEach(safeRemove);
           window.location.reload();
         };
-        function showBootError() {
+        function showBootError(messageText) {
           document.body.classList.add('boot-error');
           var title = document.getElementById('boot-title');
           var message = document.getElementById('boot-message');
           if (title) title.textContent = '読み込みに失敗しました';
-          if (message) message.textContent = '再読み込みで復旧しない場合は、演習セッションまたは保存データを初期化してください。';
+          if (message) message.textContent = messageText || '再読み込みで復旧しない場合は、演習セッションまたは保存データを初期化してください。';
         }
 
-        window.addEventListener('error', showBootError);
-        window.addEventListener('unhandledrejection', showBootError);
+        window.addEventListener('error', function () { showBootError(); });
+        window.addEventListener('unhandledrejection', function () { showBootError(); });
+        window.setTimeout(function () {
+          if (!document.body.classList.contains('app-mounted')) {
+            showBootError('アプリ本体の読み込みに失敗している可能性があります。GitHub Pagesがビルド済みdistではなくソースを配信している場合、この画面から進みません。GitHub Settings → Pages → Source が GitHub Actions になっているか確認してください。');
+          }
+        }, 8000);
       })();
     </script>
     <script type="module" src="/src/main.tsx"></script>

@@ -5,8 +5,9 @@
   "type": "module",
   "scripts": {
     "dev": "vite --host 0.0.0.0",
-    "build": "tsc -b && vite build",
-    "preview": "vite preview --host 0.0.0.0"
+    "build": "tsc -b && vite build && npm run verify:dist",
+    "preview": "vite preview --host 0.0.0.0",
+    "verify:dist": "node scripts/verify-dist.mjs"
   },
   "dependencies": {
     "vite": "6.0.5",
