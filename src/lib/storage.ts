@@ -1,11 +1,12 @@
-import type { AnswerHistory, PracticeSession, Settings } from '../types'
+import type { AnswerHistory, BookmarkStore, PracticeSession, Settings } from '../types'
 
 const HISTORY_KEY = 'ap-study-history-v1'
 const SETTINGS_KEY = 'ap-study-settings-v1'
 const SESSION_KEY = 'ap-study-current-session-v1'
+const BOOKMARKS_KEY = 'ap-study-bookmarks-v1'
 const SECONDARY_SESSION_KEY = 'ap-study-current-session-v2'
 export const defaultSettings: Settings = { examDate: '2026-11-15', dailyMinutes: 30, afternoonFields: ['情報セキュリティ', 'ネットワーク'], theme: 'light' }
-const practiceModes = new Set(['recommended', 'field', 'wrong', 'low-confidence', 'unanswered', 'random-10', 'mock-exam'])
+const practiceModes = new Set(['recommended', 'field', 'wrong', 'low-confidence', 'unanswered', 'random-10', 'mock-exam', 'bookmarked', 'single'])
 const choiceKeys = new Set(['ア', 'イ', 'ウ', 'エ'])
 const confidenceLevels = new Set(['high', 'normal', 'low'])
 const mistakeTags = new Set(['用語理解不足', '問題文の読み落とし', '選択肢の比較ミス', '計算ミス', '暗記不足', '知識の取り違え'])
@@ -49,6 +50,19 @@ const isAnswerHistory = (value: unknown): value is AnswerHistory => isRecord(val
   && isNonNegativeNumber(value.elapsedSeconds)
   && typeof value.answeredAt === 'string'
   && (value.mistakeTag === undefined || mistakeTags.has(String(value.mistakeTag)))
+
+export const loadBookmarks = (): BookmarkStore => {
+  try {
+    const value: unknown = JSON.parse(localStorage.getItem(BOOKMARKS_KEY) || '[]')
+    return Array.isArray(value) ? [...new Set(value.filter((id): id is string => typeof id === 'string' && Boolean(id)))] : []
+  } catch {
+    return []
+  }
+}
+
+export const saveBookmarks = (value: BookmarkStore) => {
+  try { localStorage.setItem(BOOKMARKS_KEY, JSON.stringify(Array.isArray(value) ? value : [])) } catch { /* Storage may be unavailable or full. */ }
+}
 
 export const loadHistory = (): AnswerHistory[] => {
   try {
@@ -109,6 +123,7 @@ export const resetData = () => {
   try {
     localStorage.removeItem(HISTORY_KEY)
     localStorage.removeItem(SETTINGS_KEY)
+    localStorage.removeItem(BOOKMARKS_KEY)
   } catch { /* Storage may be unavailable in restricted browser contexts. */ }
   resetCurrentSession()
 }

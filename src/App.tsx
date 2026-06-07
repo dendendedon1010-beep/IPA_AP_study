@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   BarChart3,
+  Bookmark,
   BookOpen,
   Brain,
   Check,
@@ -16,6 +17,7 @@ import {
   LockKeyhole,
   Play,
   RotateCcw,
+  Search,
   Settings as SettingsIcon,
   ShieldCheck,
   Sparkles,
@@ -24,10 +26,10 @@ import {
   X,
 } from 'lucide-react'
 import { questions } from './data/questions'
-import { defaultSettings, loadHistory, loadSession, loadSettings, resetData, saveHistory, saveSession, saveSettings } from './lib/storage'
-import type { AnswerHistory, ChoiceKey, Confidence, MistakeTag, PracticeMode, PracticeSession, Question, ReviewPriority, Settings, Tab } from './types'
+import { defaultSettings, loadBookmarks, loadHistory, loadSession, loadSettings, resetData, saveBookmarks, saveHistory, saveSession, saveSettings } from './lib/storage'
+import type { AnswerHistory, BookmarkStore, ChoiceKey, Confidence, MistakeTag, PracticeMode, PracticeSession, Question, ReviewPriority, Settings, Tab } from './types'
 
-const APP_VERSION = 'v1.4.4'
+const APP_VERSION = 'v1.5.0'
 const nav: { id: Tab; label: string; icon: typeof Home }[] = [
   { id: 'home', label: 'ホーム', icon: Home },
   { id: 'practice', label: '演習', icon: BookOpen },
@@ -188,9 +190,11 @@ function App() {
   const [tab, setTab] = useState<Tab>('home')
   const [history, setHistory] = useState<AnswerHistory[]>(loadHistory)
   const [settings, setSettings] = useState<Settings>(loadSettings)
+  const [bookmarks, setBookmarks] = useState<BookmarkStore>(loadBookmarks)
   const [session, setSession] = useState<PracticeSession | null>(loadSession)
   const safeHistory = Array.isArray(history) ? history : []
   const safeSettings = settings ?? defaultSettings
+  const safeBookmarks = Array.isArray(bookmarks) ? bookmarks : []
   const [selected, setSelected] = useState<ChoiceKey | null>(null)
   const [confidence, setConfidence] = useState<Confidence>('normal')
   const [result, setResult] = useState(false)
@@ -208,6 +212,7 @@ function App() {
   }
 
   useEffect(() => saveHistory(safeHistory), [safeHistory])
+  useEffect(() => saveBookmarks(safeBookmarks), [safeBookmarks])
   useEffect(() => saveSettings(safeSettings), [safeSettings])
   useEffect(() => saveSession(session), [session])
   useEffect(() => { if (session) setTab('practice') }, [])
@@ -221,6 +226,14 @@ function App() {
   }, [currentQuestionId, session?.answers])
   useEffect(scrollToTop, [tab])
   useEffect(scrollToTop, [currentQuestionId, session?.finishedAt])
+
+  const toggleBookmark = (questionId: string) => {
+    if (!questionId) return
+    setBookmarks(current => {
+      const safe = Array.isArray(current) ? current : []
+      return safe.includes(questionId) ? safe.filter(id => id !== questionId) : [...safe, questionId]
+    })
+  }
 
   const startPractice = (items: Question[] = questions, mode: PracticeMode = 'field') => {
     if (!items.length) return
@@ -297,7 +310,7 @@ function App() {
     if (id !== 'practice') leaveSession()
   }
 
-  const title = session?.finishedAt ? '演習結果' : session ? (session.mode === 'mock-exam' ? '模擬試験モード' : '午前問題 演習') : nav.find(item => item.id === tab)?.label ?? ''
+  const title = session?.finishedAt ? '演習結果' : session ? (session.mode === 'mock-exam' ? '模擬試験モード' : session.mode === 'single' ? '問題詳細' : '午前問題 演習') : nav.find(item => item.id === tab)?.label ?? ''
 
   return (
     <div className={safeSettings.theme === 'dark' ? 'dark bg-[#101713]' : ''}>
@@ -305,7 +318,7 @@ function App() {
         <header className="safe-top fixed left-1/2 top-0 z-40 flex h-[76px] w-full max-w-[480px] -translate-x-1/2 items-center justify-between border-b border-black/5 bg-paper/95 px-5 backdrop-blur dark:bg-[#101713]/95">
           <div className="flex items-center gap-3">
             {session && (
-              <button aria-label="演習を終了" onClick={leaveSession} className="-ml-2 grid size-11 place-items-center rounded-full hover:bg-black/5">
+              <button aria-label={session.mode === 'single' ? '問題一覧へ戻る' : '演習を終了'} onClick={leaveSession} className="-ml-2 grid size-11 place-items-center rounded-full hover:bg-black/5">
                 <ChevronLeft size={22} />
               </button>
             )}
@@ -338,9 +351,9 @@ function App() {
           ) : session && currentQuestion ? (
             <>
               {session.mode === 'mock-exam' && <div className="mb-3 flex items-center justify-between rounded-xl bg-white px-4 py-3 text-[11px] font-bold shadow-sm dark:bg-white/5"><span>回答済み {session.answers.length} / {session.totalQuestions}</span><span className="text-slate-400">正解 {session.correctCount}・不正解 {session.wrongCount}</span></div>}
-              <QuestionScreen question={currentQuestion} selected={selected} setSelected={setSelected} result={result} confidence={confidence} setConfidence={setConfidence} />
+              <QuestionScreen question={currentQuestion} selected={selected} setSelected={setSelected} result={result} confidence={confidence} setConfidence={setConfidence} bookmarked={safeBookmarks.includes(currentQuestion.id)} onToggleBookmark={() => toggleBookmark(currentQuestion.id)} />
             </>
-          ) : <PracticeMenu history={safeHistory} onStart={startPractice} />)}
+          ) : <PracticeMenu history={safeHistory} bookmarks={safeBookmarks} onStart={startPractice} onToggleBookmark={toggleBookmark} />)}
           {tab === 'review' && <ReviewScreen history={safeHistory} onStart={startPractice} />}
           {tab === 'analytics' && <Analytics history={safeHistory} />}
           {tab === 'settings' && (
@@ -351,6 +364,7 @@ function App() {
                 resetData()
                 setHistory([])
                 setSettings(loadSettings())
+                setBookmarks([])
               }}
             />
           )}
@@ -450,17 +464,19 @@ function Ranking({ title, items, empty, tone }: { title: string; items: ReturnTy
   )
 }
 
-function PracticeMenu({ history, onStart }: { history: AnswerHistory[]; onStart: (items?: Question[], mode?: PracticeMode) => void }) {
+function PracticeMenu({ history, bookmarks, onStart, onToggleBookmark }: { history: AnswerHistory[]; bookmarks: BookmarkStore; onStart: (items?: Question[], mode?: PracticeMode) => void; onToggleBookmark: (questionId: string) => void }) {
   const latest = useMemo(() => getLatestAnswers(history), [history])
   const recommendation = useMemo(() => getRecommendation(history), [history])
   const wrong = questions.filter(question => latest.get(question.id)?.isCorrect === false)
   const lowConfidence = questions.filter(question => latest.get(question.id)?.confidence === 'low')
   const unanswered = questions.filter(question => !latest.has(question.id))
   const morningQuestions = questions.filter(question => question.examType === 'morning')
+  const bookmarked = questions.filter(question => bookmarks.includes(question.id))
   const modes = [
     { title: '今日のおすすめ', description: recommendation.text, icon: Sparkles, items: recommendation.items, mode: recommendation.mode, color: 'bg-lime text-ink' },
     { title: '不正解復習', description: '直近で間違えた問題', icon: X, items: wrong, mode: 'wrong' as PracticeMode, color: 'bg-rose-50 text-rose-600' },
     { title: '自信なし復習', description: '自信なしで回答した問題', icon: CircleHelp, items: lowConfidence, mode: 'low-confidence' as PracticeMode, color: 'bg-amber-50 text-amber-600' },
+    { title: 'ブックマーク問題を復習', description: bookmarked.length ? '保存した問題だけを出題' : 'ブックマークされた問題はありません', icon: Bookmark, items: bookmarked, mode: 'bookmarked' as PracticeMode, color: 'bg-yellow-50 text-yellow-600' },
     { title: '未回答問題', description: 'まだ解いていない問題', icon: Lightbulb, items: unanswered, mode: 'unanswered' as PracticeMode, color: 'bg-sky-50 text-sky-600' },
     { title: 'ランダム10問', description: '全分野からランダムに出題', icon: RotateCcw, items: shuffle(questions).slice(0, 10), mode: 'random-10' as PracticeMode, color: 'bg-violet-50 text-violet-600' },
     { title: '模擬試験モード', description: `午前問題から${Math.min(10, morningQuestions.length)}問`, icon: ClipboardCheck, items: shuffle(morningQuestions).slice(0, 10), mode: 'mock-exam' as PracticeMode, color: 'bg-emerald-50 text-emerald-600' },
@@ -472,6 +488,7 @@ function PracticeMenu({ history, onStart }: { history: AnswerHistory[]; onStart:
         <h2 className="mt-2 text-xl font-bold">目的に合わせて演習</h2>
         <p className="mt-2 text-xs leading-relaxed text-white/60">復習状況や学習ペースに合う問題セットを選べます。</p>
       </section>
+      <QuestionList history={history} bookmarks={bookmarks} onStart={onStart} onToggleBookmark={onToggleBookmark} />
       <section className="space-y-2">
         {modes.map(({ title, description, icon: Icon, items, mode, color }) => (
           <button key={title} disabled={!items.length} onClick={() => onStart(items, mode)} className="flex min-h-[72px] w-full items-center gap-3 rounded-[20px] bg-white p-4 text-left shadow-sm disabled:opacity-50 dark:bg-white/5">
@@ -491,6 +508,83 @@ function PracticeMenu({ history, onStart }: { history: AnswerHistory[]; onStart:
         </div>
       </section>
     </div>
+  )
+}
+
+
+function QuestionList({ history, bookmarks, onStart, onToggleBookmark }: { history: AnswerHistory[]; bookmarks: BookmarkStore; onStart: (items?: Question[], mode?: PracticeMode) => void; onToggleBookmark: (questionId: string) => void }) {
+  const [searchKeyword, setSearchKeyword] = useState('')
+  const [selectedField, setSelectedField] = useState('')
+  const [onlyUnanswered, setOnlyUnanswered] = useState(false)
+  const [onlyWrong, setOnlyWrong] = useState(false)
+  const [onlyLowConfidence, setOnlyLowConfidence] = useState(false)
+  const [onlyBookmarked, setOnlyBookmarked] = useState(false)
+  const latest = useMemo(() => getLatestAnswers(history), [history])
+  const bookmarkSet = useMemo(() => new Set(Array.isArray(bookmarks) ? bookmarks : []), [bookmarks])
+  const keyword = String(searchKeyword ?? '').trim().toLocaleLowerCase('ja')
+  const field = String(selectedField ?? '')
+  const filtered = questions.filter(question => {
+    const answer = latest.get(question.id)
+    const searchable = [
+      question.questionText,
+      ...question.choices.map(choice => choice.text),
+      question.field,
+      question.subField,
+      ...question.explanation.keywords,
+    ].join(' ').toLocaleLowerCase('ja')
+    if (keyword && !searchable.includes(keyword)) return false
+    if (field && question.field !== field) return false
+    if (onlyUnanswered && answer) return false
+    if (onlyWrong && answer?.isCorrect !== false) return false
+    if (onlyLowConfidence && answer?.confidence !== 'low') return false
+    if (onlyBookmarked && !bookmarkSet.has(question.id)) return false
+    return true
+  })
+  const formatExam = (question: Question) => {
+    const year = question.examYear >= 2019 ? `R${question.examYear - 2018}` : String(question.examYear)
+    return `${year}${question.examSeason === '春期' ? '春' : '秋'} ${question.examType === 'morning' ? '午前' : '午後'} 問${question.questionNumber}`
+  }
+  const filters = [
+    { label: '未回答のみ', value: onlyUnanswered, set: setOnlyUnanswered },
+    { label: '不正解のみ', value: onlyWrong, set: setOnlyWrong },
+    { label: '自信なしのみ', value: onlyLowConfidence, set: setOnlyLowConfidence },
+    { label: 'ブックマークのみ', value: onlyBookmarked, set: setOnlyBookmarked },
+  ]
+
+  return (
+    <section className="rounded-[24px] bg-white p-4 shadow-sm dark:bg-white/5">
+      <div className="flex items-center justify-between gap-3"><div className="flex items-center gap-2 font-bold"><Search size={19} className="text-moss dark:text-lime" />問題一覧</div><span className="tabular text-xs font-bold text-slate-400">{filtered.length}問</span></div>
+      <label className="relative mt-4 block">
+        <Search size={17} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+        <input value={searchKeyword ?? ''} onChange={event => setSearchKeyword(event.target.value)} placeholder="問題文・選択肢・キーワードを検索" className="h-12 w-full rounded-xl border-0 bg-slate-100 pl-10 pr-3 text-sm outline-none ring-moss focus:ring-2 dark:bg-white/10" />
+      </label>
+      <select aria-label="分野フィルタ" value={selectedField ?? ''} onChange={event => setSelectedField(event.target.value)} className="mt-2 h-12 w-full rounded-xl border-0 bg-slate-100 px-3 text-sm font-bold dark:bg-white/10">
+        <option value="">すべての分野</option>
+        {allFields.map(item => <option key={item} value={item}>{item}</option>)}
+      </select>
+      <div className="mt-3 grid grid-cols-2 gap-2">
+        {filters.map(filter => <button type="button" key={filter.label} aria-pressed={filter.value} onClick={() => filter.set(!filter.value)} className={`min-h-11 rounded-xl px-2 text-[11px] font-bold ${filter.value ? 'bg-moss text-white dark:bg-lime dark:text-ink' : 'bg-slate-100 text-slate-500 dark:bg-white/10 dark:text-slate-300'}`}>{filter.label}</button>)}
+      </div>
+      {filtered.length ? (
+        <ul className="mt-4 space-y-2">
+          {filtered.map(question => {
+            const answer = latest.get(question.id)
+            const bookmarked = bookmarkSet.has(question.id)
+            return (
+              <li key={question.id} className="flex min-w-0 items-stretch gap-2 rounded-2xl bg-slate-50 p-2 dark:bg-white/5">
+                <button type="button" onClick={() => onStart([question], 'single')} className="min-w-0 flex-1 rounded-xl p-2 text-left">
+                  <span className="block text-xs font-bold">{formatExam(question)}</span>
+                  <span className="mt-1 block text-[11px] font-bold text-moss dark:text-lime">{question.field} / {question.subField}</span>
+                  <span className="mt-1 block text-[10px] text-slate-500 dark:text-slate-300">{answer ? `回答済み：${answer.isCorrect ? '正解' : '不正解'}${answer.confidence === 'low' ? '・自信なし' : ''}` : '未回答'}{bookmarked ? '・ブックマーク済み' : ''}</span>
+                  <span className="mt-2 block line-clamp-2 text-xs leading-relaxed text-slate-600 dark:text-slate-300">{question.questionText}</span>
+                </button>
+                <button type="button" aria-label={bookmarked ? `${formatExam(question)}のブックマークを解除` : `${formatExam(question)}をブックマーク`} aria-pressed={bookmarked} onClick={() => onToggleBookmark(question.id)} className={`grid w-12 shrink-0 place-items-center rounded-xl ${bookmarked ? 'bg-yellow-100 text-yellow-600 dark:bg-yellow-500/20 dark:text-yellow-300' : 'bg-white text-slate-400 dark:bg-white/10'}`}><Bookmark size={19} fill={bookmarked ? 'currentColor' : 'none'} /></button>
+              </li>
+            )
+          })}
+        </ul>
+      ) : <p className="mt-4 rounded-xl bg-slate-50 p-4 text-center text-xs text-slate-400 dark:bg-white/5">条件に一致する問題はありません。</p>}
+    </section>
   )
 }
 
@@ -551,7 +645,7 @@ function ResultQuestionList({ title, items, empty }: { title: string; items: Que
   return <section className="rounded-[24px] bg-white p-5 shadow-sm dark:bg-white/5"><div className="flex items-center justify-between"><h3 className="font-bold">{title}</h3><span className="tabular text-xs font-bold text-slate-400">{items.length}問</span></div>{items.length ? <ul className="mt-3 space-y-2">{items.map(question => <li key={question.id} className="rounded-xl bg-slate-50 p-3 text-xs dark:bg-white/5"><span className={`mr-2 rounded-full px-2 py-1 text-[9px] font-bold ${fieldColor[question.field] ?? 'bg-slate-100'}`}>{question.field}</span><span className="leading-relaxed">問{question.questionNumber} {question.questionText}</span></li>)}</ul> : <p className="mt-3 text-xs text-slate-400">{empty}</p>}</section>
 }
 
-function QuestionScreen({ question, selected, setSelected, result, confidence, setConfidence }: { question: Question; selected: ChoiceKey | null; setSelected: (key: ChoiceKey) => void; result: boolean; confidence: Confidence; setConfidence: (value: Confidence) => void }) {
+function QuestionScreen({ question, selected, setSelected, result, confidence, setConfidence, bookmarked, onToggleBookmark }: { question: Question; selected: ChoiceKey | null; setSelected: (key: ChoiceKey) => void; result: boolean; confidence: Confidence; setConfidence: (value: Confidence) => void; bookmarked: boolean; onToggleBookmark: () => void }) {
   const selectedChoice = question.choices.find(choice => choice.key === selected)
   const correctChoice = question.choices.find(choice => choice.key === question.correctAnswer)
   const mistakeTag = selected ? inferMistakeTag(question, selected === question.correctAnswer, confidence) : undefined
@@ -561,7 +655,8 @@ function QuestionScreen({ question, selected, setSelected, result, confidence, s
         <div className="flex flex-wrap items-center gap-2">
           <span className={`rounded-full px-2.5 py-1 text-[10px] font-bold ${fieldColor[question.field] ?? 'bg-slate-100 text-slate-600'}`}>{question.field}</span>
           <span className="text-[10px] font-medium text-slate-400">{question.subField}</span>
-          <span className="ml-auto text-[10px] text-slate-400">問{question.questionNumber}</span>
+          <button type="button" aria-label={bookmarked ? 'ブックマークを解除' : 'ブックマークに追加'} aria-pressed={bookmarked} onClick={onToggleBookmark} className={`ml-auto grid size-10 place-items-center rounded-full ${bookmarked ? 'bg-yellow-100 text-yellow-600 dark:bg-yellow-500/20 dark:text-yellow-300' : 'bg-slate-100 text-slate-400 dark:bg-white/10'}`}><Bookmark size={19} fill={bookmarked ? 'currentColor' : 'none'} /></button>
+          <span className="text-[10px] text-slate-400">問{question.questionNumber}</span>
         </div>
         <p className="mt-5 whitespace-pre-wrap text-[15px] font-medium leading-7">{question.questionText}</p>
         <div className="mt-5 space-y-3">
