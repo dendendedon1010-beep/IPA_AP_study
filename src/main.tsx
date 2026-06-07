@@ -1,38 +1,62 @@
 import React from 'react'
 import { createRoot } from 'react-dom/client'
-import App from './App'
 import { ErrorBoundary } from './components/ErrorBoundary'
 import './index.css'
 
-const showBootError = () => {
+const getErrorDetail = (message: string, detail?: unknown) => {
+  if (detail instanceof Error) return detail.stack || detail.message
+  return String(detail ?? message)
+}
+
+const showBootError = (message: string, detail?: unknown) => {
+  console.error('[AP Study] Boot error:', message, detail)
   document.body.classList.add('boot-error')
   const title = document.getElementById('boot-title')
-  const message = document.getElementById('boot-message')
+  const messageElement = document.getElementById('boot-message')
+  const detailElement = document.getElementById('boot-error-detail')
   if (title) title.textContent = '読み込みに失敗しました'
-  if (message) message.textContent = '再読み込みで復旧しない場合は、演習セッションまたは保存データを初期化してください。'
+  if (messageElement) {
+    messageElement.textContent =
+      'アプリ本体の起動中にエラーが発生しました。再読み込み、または保存データのリセットを試してください。'
+  }
+  if (detailElement) detailElement.textContent = getErrorDetail(message, detail)
 }
 
 window.addEventListener('error', (event) => {
-  console.error('[AP Study] Global error:', event.error || event.message)
-  showBootError()
+  showBootError(event.message || 'Global error', event.error)
 })
 window.addEventListener('unhandledrejection', (event) => {
-  console.error('[AP Study] Unhandled rejection:', event.reason)
-  showBootError()
+  showBootError('Unhandled promise rejection', event.reason)
 })
 
-function AppBootMarker() {
-  React.useEffect(() => {
-    document.body.classList.add('app-mounted')
-  }, [])
+async function bootstrap() {
+  try {
+    const rootElement = document.getElementById('root')
+    if (!rootElement) {
+      showBootError('Root element was not found')
+      return
+    }
 
-  return <App />
+    const { default: App } = await import('./App')
+
+    function AppBootMarker() {
+      React.useEffect(() => {
+        document.body.classList.add('app-mounted')
+      }, [])
+
+      return <App />
+    }
+
+    createRoot(rootElement).render(
+      <React.StrictMode>
+        <ErrorBoundary>
+          <AppBootMarker />
+        </ErrorBoundary>
+      </React.StrictMode>,
+    )
+  } catch (error) {
+    showBootError('Failed to bootstrap React app', error)
+  }
 }
 
-createRoot(document.getElementById('root')!).render(
-  <React.StrictMode>
-    <ErrorBoundary>
-      <AppBootMarker />
-    </ErrorBoundary>
-  </React.StrictMode>,
-)
+void bootstrap()
