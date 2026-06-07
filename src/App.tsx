@@ -29,7 +29,7 @@ import { questions } from './data/questions'
 import { defaultSettings, loadBookmarks, loadHistory, loadSession, loadSettings, resetData, saveBookmarks, saveHistory, saveSession, saveSettings } from './lib/storage'
 import type { AnswerHistory, BookmarkStore, ChoiceKey, Confidence, MistakeTag, PracticeMode, PracticeSession, Question, ReviewPriority, Settings, Tab } from './types'
 
-const APP_VERSION = 'v1.4.6'
+const APP_VERSION = 'v1.5.0'
 const nav: { id: Tab; label: string; icon: typeof Home }[] = [
   { id: 'home', label: 'ホーム', icon: Home },
   { id: 'practice', label: '演習', icon: BookOpen },
@@ -512,17 +512,27 @@ function PracticeMenu({ history, bookmarks, onStart, onToggleBookmark }: { histo
 }
 
 
+type QuestionListFilter = 'all' | 'unanswered' | 'wrong' | 'low-confidence' | 'bookmarked'
+
+const questionListFilters: { label: string; value: QuestionListFilter }[] = [
+  { label: '全て', value: 'all' },
+  { label: '未回答のみ', value: 'unanswered' },
+  { label: '不正解のみ', value: 'wrong' },
+  { label: '自信なしのみ', value: 'low-confidence' },
+  { label: 'ブックマークのみ', value: 'bookmarked' },
+]
+const questionListFilterValues = new Set<QuestionListFilter>(questionListFilters.map(filter => filter.value))
+const getSafeQuestionListFilter = (value: unknown): QuestionListFilter => questionListFilterValues.has(value as QuestionListFilter) ? value as QuestionListFilter : 'all'
+
 function QuestionList({ history, bookmarks, onStart, onToggleBookmark }: { history: AnswerHistory[]; bookmarks: BookmarkStore; onStart: (items?: Question[], mode?: PracticeMode) => void; onToggleBookmark: (questionId: string) => void }) {
   const [searchKeyword, setSearchKeyword] = useState('')
   const [selectedField, setSelectedField] = useState('')
-  const [onlyUnanswered, setOnlyUnanswered] = useState(false)
-  const [onlyWrong, setOnlyWrong] = useState(false)
-  const [onlyLowConfidence, setOnlyLowConfidence] = useState(false)
-  const [onlyBookmarked, setOnlyBookmarked] = useState(false)
+  const [selectedFilter, setSelectedFilter] = useState<QuestionListFilter>('all')
   const latest = useMemo(() => getLatestAnswers(history), [history])
   const bookmarkSet = useMemo(() => new Set(Array.isArray(bookmarks) ? bookmarks : []), [bookmarks])
   const keyword = String(searchKeyword ?? '').trim().toLocaleLowerCase('ja')
   const field = String(selectedField ?? '')
+  const filter = getSafeQuestionListFilter(selectedFilter)
   const filtered = questions.filter(question => {
     const answer = latest.get(question.id)
     const searchable = [
@@ -534,23 +544,16 @@ function QuestionList({ history, bookmarks, onStart, onToggleBookmark }: { histo
     ].join(' ').toLocaleLowerCase('ja')
     if (keyword && !searchable.includes(keyword)) return false
     if (field && question.field !== field) return false
-    if (onlyUnanswered && answer) return false
-    if (onlyWrong && answer?.isCorrect !== false) return false
-    if (onlyLowConfidence && answer?.confidence !== 'low') return false
-    if (onlyBookmarked && !bookmarkSet.has(question.id)) return false
+    if (filter === 'unanswered' && answer) return false
+    if (filter === 'wrong' && answer?.isCorrect !== false) return false
+    if (filter === 'low-confidence' && answer?.confidence !== 'low') return false
+    if (filter === 'bookmarked' && !bookmarkSet.has(question.id)) return false
     return true
   })
   const formatExam = (question: Question) => {
     const year = question.examYear >= 2019 ? `R${question.examYear - 2018}` : String(question.examYear)
     return `${year}${question.examSeason === '春期' ? '春' : '秋'} ${question.examType === 'morning' ? '午前' : '午後'} 問${question.questionNumber}`
   }
-  const filters = [
-    { label: '未回答のみ', value: onlyUnanswered, set: setOnlyUnanswered },
-    { label: '不正解のみ', value: onlyWrong, set: setOnlyWrong },
-    { label: '自信なしのみ', value: onlyLowConfidence, set: setOnlyLowConfidence },
-    { label: 'ブックマークのみ', value: onlyBookmarked, set: setOnlyBookmarked },
-  ]
-
   return (
     <section className="rounded-[24px] bg-white p-4 shadow-sm dark:bg-white/5">
       <div className="flex items-center justify-between gap-3"><div className="flex items-center gap-2 font-bold"><Search size={19} className="text-moss dark:text-lime" />問題一覧</div><span className="tabular text-xs font-bold text-slate-400">{filtered.length}問</span></div>
@@ -563,7 +566,7 @@ function QuestionList({ history, bookmarks, onStart, onToggleBookmark }: { histo
         {allFields.map(item => <option key={item} value={item}>{item}</option>)}
       </select>
       <div className="mt-3 grid grid-cols-2 gap-2">
-        {filters.map(filter => <button type="button" key={filter.label} aria-pressed={filter.value} onClick={() => filter.set(!filter.value)} className={`min-h-11 rounded-xl px-2 text-[11px] font-bold ${filter.value ? 'bg-moss text-white dark:bg-lime dark:text-ink' : 'bg-slate-100 text-slate-500 dark:bg-white/10 dark:text-slate-300'}`}>{filter.label}</button>)}
+        {questionListFilters.map(option => <button type="button" key={option.value} aria-pressed={filter === option.value} onClick={() => setSelectedFilter(getSafeQuestionListFilter(option.value))} className={`min-h-11 rounded-xl px-2 text-[11px] font-bold ${filter === option.value ? 'bg-moss text-white dark:bg-lime dark:text-ink' : 'bg-slate-100 text-slate-500 dark:bg-white/10 dark:text-slate-300'}`}>{option.label}</button>)}
       </div>
       {filtered.length ? (
         <ul className="mt-4 space-y-2">
