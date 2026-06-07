@@ -27,7 +27,7 @@ import { questions } from './data/questions'
 import { loadHistory, loadSession, loadSettings, resetData, saveHistory, saveSession, saveSettings } from './lib/storage'
 import type { AnswerHistory, ChoiceKey, Confidence, PracticeMode, PracticeSession, Question, Settings, Tab } from './types'
 
-const APP_VERSION = 'v1.3.1'
+const APP_VERSION = 'v1.3.3'
 const nav: { id: Tab; label: string; icon: typeof Home }[] = [
   { id: 'home', label: 'ホーム', icon: Home },
   { id: 'practice', label: '演習', icon: BookOpen },
@@ -115,8 +115,10 @@ function App() {
   const [result, setResult] = useState(false)
   const start = useRef(Date.now())
   const contentRef = useRef<HTMLElement>(null)
-  const sessionQuestions = useMemo(() => session?.questionIds.map(id => questions.find(question => question.id === id)).filter((question): question is Question => Boolean(question)) ?? [], [session?.questionIds])
-  const currentQuestion = sessionQuestions[session?.currentIndex ?? 0]
+  const sessionQuestionIds = useMemo(() => Array.isArray(session?.questionIds) ? session.questionIds : [], [session?.questionIds])
+  const sessionQuestions = useMemo(() => sessionQuestionIds.map(id => questions.find(question => question.id === id)).filter((question): question is Question => Boolean(question)), [sessionQuestionIds])
+  const currentIndex = session && Number.isInteger(session.currentIndex) && session.currentIndex >= 0 && session.currentIndex < sessionQuestionIds.length ? session.currentIndex : 0
+  const currentQuestion = questions.find(question => question.id === sessionQuestionIds[currentIndex])
   const currentQuestionId = currentQuestion?.id
 
   const scrollToTop = () => {
