@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { Component, useEffect, useMemo, useRef, useState } from 'react'
 import {
   BarChart3,
   BookOpen,
@@ -24,10 +24,10 @@ import {
   X,
 } from 'lucide-react'
 import { questions } from './data/questions'
-import { loadHistory, loadSession, loadSettings, resetData, saveHistory, saveSession, saveSettings } from './lib/storage'
+import { loadHistory, loadSession, loadSettings, resetData, resetSession, saveHistory, saveSession, saveSettings } from './lib/storage'
 import type { AnswerHistory, ChoiceKey, Confidence, PracticeMode, PracticeSession, Question, Settings, Tab } from './types'
 
-const APP_VERSION = 'v1.3.0'
+const APP_VERSION = 'v1.3.2'
 const nav: { id: Tab; label: string; icon: typeof Home }[] = [
   { id: 'home', label: 'ホーム', icon: Home },
   { id: 'practice', label: '演習', icon: BookOpen },
@@ -105,7 +105,7 @@ function shuffle(items: Question[]) {
   return [...items].sort(() => Math.random() - 0.5)
 }
 
-function App() {
+function StudyApp() {
   const [tab, setTab] = useState<Tab>('home')
   const [history, setHistory] = useState<AnswerHistory[]>(loadHistory)
   const [settings, setSettings] = useState<Settings>(loadSettings)
@@ -115,7 +115,12 @@ function App() {
   const [result, setResult] = useState(false)
   const start = useRef(Date.now())
   const contentRef = useRef<HTMLElement>(null)
-  const sessionQuestions = useMemo(() => session?.questionIds.map(id => questions.find(question => question.id === id)).filter((question): question is Question => Boolean(question)) ?? [], [session?.questionIds])
+  const sessionQuestions = useMemo(() => {
+    if (!session || !Array.isArray(session.questionIds)) return []
+    return session.questionIds
+      .map(id => questions.find(question => question.id === id))
+      .filter((question): question is Question => Boolean(question))
+  }, [session])
   const currentQuestion = sessionQuestions[session?.currentIndex ?? 0]
   const currentQuestionId = currentQuestion?.id
 
@@ -128,6 +133,16 @@ function App() {
   useEffect(() => saveSettings(settings), [settings])
   useEffect(() => saveSession(session), [session])
   useEffect(() => { if (session) setTab('practice') }, [])
+  useEffect(() => {
+    if (!session) return
+    if (sessionQuestions.length === 0 || sessionQuestions.length !== session.questionIds.length || !Number.isInteger(session.currentIndex) || session.currentIndex < 0 || session.currentIndex >= sessionQuestions.length) {
+      resetSession()
+      setSession(null)
+      setSelected(null)
+      setResult(false)
+      setTab('practice')
+    }
+  }, [session, sessionQuestions.length])
   useEffect(() => {
     const savedAnswer = session?.answers.find(answer => answer.questionId === currentQuestionId)
     if (savedAnswer) {
@@ -596,7 +611,7 @@ function SettingsScreen({ value, onChange, onReset }: { value: Settings; onChang
   return (
     <div className="min-w-0 max-w-full space-y-4 overflow-x-hidden">
       <SettingCard title="学習目標" icon={Target}>
-        <label className="block min-w-0 max-w-full text-xs font-bold text-slate-500">試験予定日<input type="date" value={value.examDate} onChange={event => onChange({ ...value, examDate: event.target.value })} className="mt-2 block h-12 w-full min-w-0 max-w-full appearance-none rounded-xl border-0 bg-slate-100 px-3 font-medium text-ink outline-none dark:bg-white/10 dark:text-white" /></label>
+        <label className="block min-w-0 max-w-full text-xs font-bold text-slate-500">試験予定日<input type="date" value={value.examDate} onChange={event => onChange({ ...value, examDate: event.target.value })} className="exam-date-input mt-2 h-12 w-full min-w-0 max-w-full rounded-xl border-0 bg-slate-100 px-3 font-medium text-ink outline-none dark:bg-white/10 dark:text-white" /></label>
         <label className="mt-4 block min-w-0 max-w-full text-xs font-bold text-slate-500">1日の目標学習時間<div className="mt-2 flex min-w-0 flex-wrap gap-2">{[15, 30, 45, 60].map(minutes => <button key={minutes} onClick={() => onChange({ ...value, dailyMinutes: minutes })} className={`h-11 min-w-[64px] flex-1 rounded-xl text-xs font-bold ${value.dailyMinutes === minutes ? 'bg-moss text-white' : 'bg-slate-100 text-slate-500 dark:bg-white/10'}`}>{minutes}分</button>)}</div></label>
       </SettingCard>
       <SettingCard title="午後の選択候補" icon={BookOpen}><div className="flex flex-wrap gap-2">{options.map(option => { const active = value.afternoonFields.includes(option); return <button key={option} onClick={() => onChange({ ...value, afternoonFields: active ? value.afternoonFields.filter(field => field !== option) : [...value.afternoonFields, option] })} className={`rounded-full px-3 py-2 text-xs font-bold ${active ? 'bg-moss text-white' : 'bg-slate-100 text-slate-500 dark:bg-white/10'}`}>{active && '✓ '}{option}</button> })}</div></SettingCard>
@@ -613,6 +628,47 @@ function SettingsScreen({ value, onChange, onReset }: { value: Settings; onChang
 
 function SettingCard({ title, icon: Icon, children }: { title: string; icon: typeof Home; children: React.ReactNode }) {
   return <section className="min-w-0 max-w-full overflow-hidden rounded-[24px] bg-white p-5 shadow-sm dark:bg-white/5"><div className="mb-5 flex items-center gap-2 font-bold"><Icon size={18} className="text-moss dark:text-lime" />{title}</div>{children}</section>
+}
+
+interface AppErrorBoundaryState {
+  hasError: boolean
+}
+
+class AppErrorBoundary extends Component<{ children: React.ReactNode }, AppErrorBoundaryState> {
+  state: AppErrorBoundaryState = { hasError: false }
+
+  static getDerivedStateFromError(): AppErrorBoundaryState {
+    return { hasError: true }
+  }
+
+  private recoverSession = () => {
+    resetSession()
+    window.location.reload()
+  }
+
+  private resetAllData = () => {
+    resetData()
+    window.location.reload()
+  }
+
+  render() {
+    if (!this.state.hasError) return this.props.children
+    return (
+      <div className="grid min-h-screen place-items-center bg-paper px-5 text-ink">
+        <div className="w-full max-w-sm rounded-[24px] bg-white p-6 text-center shadow-card">
+          <h1 className="text-lg font-bold">アプリの読み込み中に問題が発生しました</h1>
+          <p className="mt-3 text-xs leading-relaxed text-slate-500">現在の演習データを破棄すると、学習履歴と設定を残したまま復旧できます。</p>
+          <button onClick={this.recoverSession} className="mt-5 h-12 w-full rounded-xl bg-moss text-sm font-bold text-white">現在の演習セッションを破棄して復旧</button>
+          <button onClick={() => window.location.reload()} className="mt-3 h-12 w-full rounded-xl bg-slate-100 text-sm font-bold text-slate-600">再読み込み</button>
+          <button onClick={this.resetAllData} className="mt-3 text-xs font-bold text-rose-500">学習データをリセットして復旧</button>
+        </div>
+      </div>
+    )
+  }
+}
+
+function App() {
+  return <AppErrorBoundary><StudyApp /></AppErrorBoundary>
 }
 
 export default App

@@ -1,3 +1,27 @@
 @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Noto+Sans+JP:wght@400;500;600;700;800&display=swap');
 @tailwind base; @tailwind components; @tailwind utilities;
 :root{font-family:'Noto Sans JP',sans-serif;color:#17201c;background:#e9ede9;font-synthesis:none}*{box-sizing:border-box}html{background:#e9ede9}body{margin:0;min-width:320px;min-height:100vh;-webkit-tap-highlight-color:transparent}button,a{touch-action:manipulation}.safe-top{padding-top:max(12px,env(safe-area-inset-top))}.safe-bottom{padding-bottom:max(10px,env(safe-area-inset-bottom))}.no-scrollbar::-webkit-scrollbar{display:none}.no-scrollbar{scrollbar-width:none}.tabular{font-family:'DM Sans',sans-serif;font-variant-numeric:tabular-nums}
+
+
+.exam-date-input {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding-top: 0;
+  padding-bottom: 0;
+  line-height: normal;
+  text-align: center;
+}
+
+.exam-date-input[type="date"] {
+  appearance: none;
+  -webkit-appearance: none;
+  line-height: normal;
+  text-align: center;
+}
+
+.exam-date-input[type="date"]::-webkit-date-and-time-value {
+  min-height: 1.5em;
+  margin: auto;
+  text-align: center;
+}
