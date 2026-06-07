@@ -1,5 +1,5 @@
 import { Component, type ErrorInfo, type ReactNode } from 'react'
-import { resetCurrentSession } from '../lib/storage'
+import { resetCurrentSession, resetData } from '../lib/storage'
 
 interface ErrorBoundaryProps {
   children: ReactNode
@@ -25,6 +25,11 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
     window.location.reload()
   }
 
+  private resetSavedData = () => {
+    resetData()
+    window.location.reload()
+  }
+
   render() {
     if (!this.state.hasError) return this.props.children
 
@@ -33,7 +38,7 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
         <section className="w-full max-w-[440px] rounded-[24px] bg-white p-6 text-center shadow-card dark:bg-white/5">
           <h1 className="text-lg font-bold">画面の表示中にエラーが発生しました</h1>
           <p className="mt-3 text-sm leading-relaxed text-slate-500 dark:text-slate-300">
-            学習履歴と設定はそのまま残っています。再読み込みしても復旧しない場合は、現在の演習セッションだけリセットしてください。
+            学習履歴と設定はそのまま残っています。再読み込みや演習セッションのリセットで復旧しない場合のみ、保存データを初期化してください。
           </p>
           <div className="mt-6 space-y-3">
             <button onClick={() => window.location.reload()} className="h-12 w-full rounded-xl bg-ink text-sm font-bold text-white dark:bg-lime dark:text-ink">
@@ -41,6 +46,9 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
             </button>
             <button onClick={this.resetSession} className="h-12 w-full rounded-xl border border-slate-200 text-sm font-bold dark:border-white/20">
               現在の演習セッションだけリセット
+            </button>
+            <button onClick={this.resetSavedData} className="h-12 w-full rounded-xl border border-rose-200 text-sm font-bold text-rose-600 dark:border-rose-400/30 dark:text-rose-300">
+              壊れた保存データを安全初期化
             </button>
           </div>
         </section>

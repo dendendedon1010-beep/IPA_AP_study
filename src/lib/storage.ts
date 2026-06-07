@@ -3,7 +3,7 @@ import type { AnswerHistory, PracticeSession, Settings } from '../types'
 const HISTORY_KEY = 'ap-study-history-v1'
 const SETTINGS_KEY = 'ap-study-settings-v1'
 const SESSION_KEY = 'ap-study-current-session-v1'
-const defaults: Settings = { examDate: '2026-11-15', dailyMinutes: 30, afternoonFields: ['情報セキュリティ', 'ネットワーク'], theme: 'light' }
+export const defaultSettings: Settings = { examDate: '2026-11-15', dailyMinutes: 30, afternoonFields: ['情報セキュリティ', 'ネットワーク'], theme: 'light' }
 const practiceModes = new Set(['recommended', 'field', 'wrong', 'low-confidence', 'unanswered', 'random-10', 'mock-exam'])
 const choiceKeys = new Set(['ア', 'イ', 'ウ', 'エ'])
 const confidenceLevels = new Set(['high', 'normal', 'low'])
@@ -39,10 +39,47 @@ const isPracticeSession = (value: unknown): value is PracticeSession => {
     && answersAreValid
 }
 
-export const loadHistory = (): AnswerHistory[] => { try { return JSON.parse(localStorage.getItem(HISTORY_KEY) || '[]') } catch { return [] } }
-export const saveHistory = (value: AnswerHistory[]) => localStorage.setItem(HISTORY_KEY, JSON.stringify(value))
-export const loadSettings = (): Settings => { try { return { ...defaults, ...JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}') } } catch { return defaults } }
-export const saveSettings = (value: Settings) => localStorage.setItem(SETTINGS_KEY, JSON.stringify(value))
+const isAnswerHistory = (value: unknown): value is AnswerHistory => isRecord(value)
+  && typeof value.id === 'string'
+  && typeof value.questionId === 'string'
+  && choiceKeys.has(String(value.selectedAnswer))
+  && typeof value.isCorrect === 'boolean'
+  && confidenceLevels.has(String(value.confidence))
+  && isNonNegativeNumber(value.elapsedSeconds)
+  && typeof value.answeredAt === 'string'
+  && (value.mistakeTag === undefined || mistakeTags.has(String(value.mistakeTag)))
+
+export const loadHistory = (): AnswerHistory[] => {
+  try {
+    const value: unknown = JSON.parse(localStorage.getItem(HISTORY_KEY) || '[]')
+    return Array.isArray(value) ? value.filter(isAnswerHistory) : []
+  } catch {
+    return []
+  }
+}
+
+export const saveHistory = (value: AnswerHistory[]) => {
+  try { localStorage.setItem(HISTORY_KEY, JSON.stringify(value)) } catch { /* Storage may be unavailable or full. */ }
+}
+
+export const loadSettings = (): Settings => {
+  try {
+    const value: unknown = JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}')
+    if (!isRecord(value)) return { ...defaultSettings, afternoonFields: [...defaultSettings.afternoonFields] }
+    return {
+      examDate: typeof value.examDate === 'string' ? value.examDate : defaultSettings.examDate,
+      dailyMinutes: typeof value.dailyMinutes === 'number' && Number.isFinite(value.dailyMinutes) ? value.dailyMinutes : defaultSettings.dailyMinutes,
+      afternoonFields: Array.isArray(value.afternoonFields) && value.afternoonFields.every(field => typeof field === 'string') ? value.afternoonFields : [...defaultSettings.afternoonFields],
+      theme: value.theme === 'light' || value.theme === 'dark' ? value.theme : defaultSettings.theme,
+    }
+  } catch {
+    return { ...defaultSettings, afternoonFields: [...defaultSettings.afternoonFields] }
+  }
+}
+
+export const saveSettings = (value: Settings) => {
+  try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(value)) } catch { /* Storage may be unavailable or full. */ }
+}
 export const resetCurrentSession = () => {
   try { localStorage.removeItem(SESSION_KEY) } catch { /* Storage may be unavailable in restricted browser contexts. */ }
 }
@@ -57,5 +94,17 @@ export const loadSession = (): PracticeSession | null => {
   resetCurrentSession()
   return null
 }
-export const saveSession = (value: PracticeSession | null) => value ? localStorage.setItem(SESSION_KEY, JSON.stringify(value)) : resetCurrentSession()
-export const resetData = () => { localStorage.removeItem(HISTORY_KEY); localStorage.removeItem(SETTINGS_KEY); resetCurrentSession() }
+export const saveSession = (value: PracticeSession | null) => {
+  if (!value) {
+    resetCurrentSession()
+    return
+  }
+  try { localStorage.setItem(SESSION_KEY, JSON.stringify(value)) } catch { /* Storage may be unavailable or full. */ }
+}
+export const resetData = () => {
+  try {
+    localStorage.removeItem(HISTORY_KEY)
+    localStorage.removeItem(SETTINGS_KEY)
+  } catch { /* Storage may be unavailable in restricted browser contexts. */ }
+  resetCurrentSession()
+}

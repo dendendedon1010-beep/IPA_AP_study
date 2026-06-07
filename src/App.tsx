@@ -24,10 +24,10 @@ import {
   X,
 } from 'lucide-react'
 import { questions } from './data/questions'
-import { loadHistory, loadSession, loadSettings, resetData, saveHistory, saveSession, saveSettings } from './lib/storage'
+import { defaultSettings, loadHistory, loadSession, loadSettings, resetData, saveHistory, saveSession, saveSettings } from './lib/storage'
 import type { AnswerHistory, ChoiceKey, Confidence, MistakeTag, PracticeMode, PracticeSession, Question, ReviewPriority, Settings, Tab } from './types'
 
-const APP_VERSION = 'v1.4.0'
+const APP_VERSION = 'v1.4.1'
 const nav: { id: Tab; label: string; icon: typeof Home }[] = [
   { id: 'home', label: 'ホーム', icon: Home },
   { id: 'practice', label: '演習', icon: BookOpen },
@@ -59,16 +59,36 @@ const priorityClass: Record<ReviewPriority, string> = {
 const todayKey = () => new Date().toLocaleDateString('sv-SE')
 const answerDateKey = (value: string) => new Date(value).toLocaleDateString('sv-SE')
 
+function getSafeHistory(history: unknown): AnswerHistory[] {
+  if (!Array.isArray(history)) return []
+  return history.flatMap(value => {
+    if (!value || typeof value !== 'object') return []
+    const answer = value as Partial<AnswerHistory>
+    if (typeof answer.questionId !== 'string' || !answer.questionId) return []
+    return [{
+      id: typeof answer.id === 'string' ? answer.id : answer.questionId,
+      questionId: answer.questionId,
+      selectedAnswer: answer.selectedAnswer === 'ア' || answer.selectedAnswer === 'イ' || answer.selectedAnswer === 'ウ' || answer.selectedAnswer === 'エ' ? answer.selectedAnswer : 'ア',
+      isCorrect: typeof answer.isCorrect === 'boolean' ? answer.isCorrect : false,
+      confidence: answer.confidence === 'high' || answer.confidence === 'low' ? answer.confidence : 'normal',
+      elapsedSeconds: typeof answer.elapsedSeconds === 'number' && Number.isFinite(answer.elapsedSeconds) && answer.elapsedSeconds >= 0 ? answer.elapsedSeconds : 0,
+      answeredAt: typeof answer.answeredAt === 'string' ? answer.answeredAt : '',
+      mistakeTag: mistakeTags.includes(answer.mistakeTag as MistakeTag) ? answer.mistakeTag : undefined,
+    }]
+  })
+}
+
 function getLatestAnswers(history: AnswerHistory[]) {
   const latest = new Map<string, AnswerHistory>()
-  history.forEach(answer => latest.set(answer.questionId, answer))
+  getSafeHistory(history).forEach(answer => latest.set(answer.questionId, answer))
   return latest
 }
 
 function getFieldStats(history: AnswerHistory[]) {
+  const safeHistory = getSafeHistory(history)
   return allFields.map(field => {
     const questionIds = new Set(questions.filter(question => question.field === field).map(question => question.id))
-    const answers = history.filter(answer => questionIds.has(answer.questionId))
+    const answers = safeHistory.filter(answer => questionIds.has(answer.questionId))
     const correct = answers.filter(answer => answer.isCorrect).length
     const answeredQuestionIds = new Set(answers.map(answer => answer.questionId))
     const totalQuestions = questionIds.size
@@ -94,13 +114,16 @@ function inferMistakeTag(question: Question, isCorrect: boolean, confidence: Con
 }
 
 function getAnswerMistakeTag(answer: Pick<AnswerHistory, 'questionId' | 'isCorrect' | 'confidence' | 'mistakeTag'>) {
-  if (answer.mistakeTag) return answer.mistakeTag
+  if (!answer || typeof answer.questionId !== 'string') return undefined
+  const mistakeTag = mistakeTags.includes(answer.mistakeTag as MistakeTag) ? answer.mistakeTag : undefined
+  if (mistakeTag) return mistakeTag
   const question = questions.find(item => item.id === answer.questionId)
-  return question ? inferMistakeTag(question, answer.isCorrect, answer.confidence) : undefined
+  const confidence = answer.confidence === 'high' || answer.confidence === 'low' ? answer.confidence : 'normal'
+  return question ? inferMistakeTag(question, answer.isCorrect === true, confidence) : undefined
 }
 
 function getReviewPriority(questionId: string, history: AnswerHistory[]): ReviewPriority | null {
-  const answers = history.filter(answer => answer.questionId === questionId)
+  const answers = getSafeHistory(history).filter(answer => answer.questionId === questionId)
   if (!answers.length) return 'low'
   const latest = answers[answers.length - 1]
   const incorrectCount = answers.filter(answer => !answer.isCorrect).length
@@ -112,28 +135,30 @@ function getReviewPriority(questionId: string, history: AnswerHistory[]): Review
 }
 
 function getMistakeCounts(history: AnswerHistory[]) {
-  return mistakeTags.map(tag => ({ tag, count: history.filter(answer => getAnswerMistakeTag(answer) === tag).length }))
+  const safeHistory = getSafeHistory(history)
+  return mistakeTags.map(tag => ({ tag, count: safeHistory.filter(answer => getAnswerMistakeTag(answer) === tag).length }))
 }
 
 function getConsecutiveWrongField(history: AnswerHistory[]) {
-  const recentWrong = history.slice(-2)
+  const recentWrong = getSafeHistory(history).slice(-2)
   if (recentWrong.length < 2 || recentWrong.some(answer => answer.isCorrect)) return null
   const fields = recentWrong.map(answer => questions.find(question => question.id === answer.questionId)?.field)
   return fields[0] && fields[0] === fields[1] ? fields[0] : null
 }
 
 function getRecommendation(history: AnswerHistory[]) {
-  const highPriority = questions.filter(question => getReviewPriority(question.id, history) === 'high')
+  const safeHistory = getSafeHistory(history)
+  const highPriority = questions.filter(question => getReviewPriority(question.id, safeHistory) === 'high')
   if (highPriority.length) return { text: `復習優先度 高 の問題が${highPriority.length}問あります`, items: highPriority.slice(0, 5), mode: 'recommended' as PracticeMode }
-  const consecutiveWrongField = getConsecutiveWrongField(history)
+  const consecutiveWrongField = getConsecutiveWrongField(safeHistory)
   if (consecutiveWrongField) {
     const items = questions.filter(question => question.field === consecutiveWrongField).slice(0, 5)
     return { text: `${consecutiveWrongField}でミスが増えています`, items, mode: 'recommended' as PracticeMode }
   }
-  const latest = getLatestAnswers(history)
+  const latest = getLatestAnswers(safeHistory)
   const lowConfidence = questions.filter(question => latest.get(question.id)?.confidence === 'low')
   if (lowConfidence.length) return { text: `自信なし問題を${Math.min(5, lowConfidence.length)}問復習しましょう`, items: lowConfidence.slice(0, 5), mode: 'low-confidence' as PracticeMode }
-  const stats = getFieldStats(history)
+  const stats = getFieldStats(safeHistory)
   const answeredStats = stats.filter(item => item.count > 0)
   const mostIncorrect = [...stats].sort((a, b) => b.incorrect - a.incorrect)[0]
   const lowAccuracy = [...answeredStats].sort((a, b) => a.accuracy - b.accuracy)[0]
@@ -147,7 +172,6 @@ function getRecommendation(history: AnswerHistory[]) {
     return { text: `${lowAccuracy.field}の正答率を高めましょう`, items, mode: 'recommended' as PracticeMode }
   }
   if (mostUnanswered?.unanswered) {
-    const latest = getLatestAnswers(history)
     const items = questions.filter(question => question.field === mostUnanswered.field && !latest.has(question.id)).slice(0, 10)
     return { text: `未回答問題を${items.length}問進めましょう`, items, mode: 'recommended' as PracticeMode }
   }
@@ -165,6 +189,8 @@ function App() {
   const [history, setHistory] = useState<AnswerHistory[]>(loadHistory)
   const [settings, setSettings] = useState<Settings>(loadSettings)
   const [session, setSession] = useState<PracticeSession | null>(loadSession)
+  const safeHistory = Array.isArray(history) ? history : []
+  const safeSettings = settings ?? defaultSettings
   const [selected, setSelected] = useState<ChoiceKey | null>(null)
   const [confidence, setConfidence] = useState<Confidence>('normal')
   const [result, setResult] = useState(false)
@@ -181,8 +207,8 @@ function App() {
     contentRef.current?.scrollTo({ top: 0, behavior: 'auto' })
   }
 
-  useEffect(() => saveHistory(history), [history])
-  useEffect(() => saveSettings(settings), [settings])
+  useEffect(() => saveHistory(safeHistory), [safeHistory])
+  useEffect(() => saveSettings(safeSettings), [safeSettings])
   useEffect(() => saveSession(session), [session])
   useEffect(() => { if (session) setTab('practice') }, [])
   useEffect(() => {
@@ -234,7 +260,7 @@ function App() {
       answeredAt: new Date().toISOString(),
       mistakeTag,
     }
-    setHistory(current => [...current, entry])
+    setHistory(current => [...(Array.isArray(current) ? current : []), entry])
     setSession(current => current && ({
       ...current,
       correctCount: current.correctCount + (isCorrect ? 1 : 0),
@@ -274,7 +300,7 @@ function App() {
   const title = session?.finishedAt ? '演習結果' : session ? (session.mode === 'mock-exam' ? '模擬試験モード' : '午前問題 演習') : nav.find(item => item.id === tab)?.label ?? ''
 
   return (
-    <div className={settings.theme === 'dark' ? 'dark bg-[#101713]' : ''}>
+    <div className={safeSettings.theme === 'dark' ? 'dark bg-[#101713]' : ''}>
       <div className="mx-auto min-h-screen max-w-[480px] bg-paper shadow-2xl dark:bg-[#101713] dark:text-white">
         <header className="safe-top fixed left-1/2 top-0 z-40 flex h-[76px] w-full max-w-[480px] -translate-x-1/2 items-center justify-between border-b border-black/5 bg-paper/95 px-5 backdrop-blur dark:bg-[#101713]/95">
           <div className="flex items-center gap-3">
@@ -299,12 +325,12 @@ function App() {
         </header>
 
         <main ref={contentRef} className={`min-w-0 max-w-full overflow-x-hidden px-4 pt-[92px] ${session ? 'pb-[138px]' : 'pb-[104px]'}`}>
-          {tab === 'home' && <HomeScreen history={history} onStart={startPractice} onReview={() => setTab('review')} />}
+          {tab === 'home' && <HomeScreen history={safeHistory} onStart={startPractice} onReview={() => setTab('review')} />}
           {tab === 'practice' && (session?.finishedAt ? (
             <ResultScreen
               session={session}
               questions={sessionQuestions}
-              history={history}
+              history={safeHistory}
               onStart={startPractice}
               onHome={() => { leaveSession(); setTab('home') }}
               onAnalytics={() => { leaveSession(); setTab('analytics') }}
@@ -314,12 +340,12 @@ function App() {
               {session.mode === 'mock-exam' && <div className="mb-3 flex items-center justify-between rounded-xl bg-white px-4 py-3 text-[11px] font-bold shadow-sm dark:bg-white/5"><span>回答済み {session.answers.length} / {session.totalQuestions}</span><span className="text-slate-400">正解 {session.correctCount}・不正解 {session.wrongCount}</span></div>}
               <QuestionScreen question={currentQuestion} selected={selected} setSelected={setSelected} result={result} confidence={confidence} setConfidence={setConfidence} />
             </>
-          ) : <PracticeMenu history={history} onStart={startPractice} />)}
-          {tab === 'review' && <ReviewScreen history={history} onStart={startPractice} />}
-          {tab === 'analytics' && <Analytics history={history} />}
+          ) : <PracticeMenu history={safeHistory} onStart={startPractice} />)}
+          {tab === 'review' && <ReviewScreen history={safeHistory} onStart={startPractice} />}
+          {tab === 'analytics' && <Analytics history={safeHistory} />}
           {tab === 'settings' && (
             <SettingsScreen
-              value={settings}
+              value={safeSettings}
               onChange={setSettings}
               onReset={() => {
                 resetData()
