@@ -1,11 +1,12 @@
 import { resolveQuestionId } from '../data/questions'
-import type { AnswerHistory, BookmarkStore, PracticeSession, Settings } from '../types'
+import type { AnswerHistory, BookmarkStore, MockExamSession, PracticeSession, Settings } from '../types'
 
 const HISTORY_KEY = 'ap-study-history-v1'
 const SETTINGS_KEY = 'ap-study-settings-v1'
 const SESSION_KEY = 'ap-study-current-session-v1'
 const BOOKMARKS_KEY = 'ap-study-bookmarks-v1'
 const SECONDARY_SESSION_KEY = 'ap-study-current-session-v2'
+const MOCK_EXAM_SESSION_KEY = 'ap-study-mock-exam-session-v1'
 export const defaultSettings: Settings = { examDate: '2026-11-15', dailyMinutes: 30, afternoonFields: ['情報セキュリティ', 'ネットワーク'], theme: 'light' }
 const practiceModes = new Set(['recommended', 'today-review', 'field', 'wrong', 'low-confidence', 'unanswered', 'random-10', 'mock-exam', 'bookmarked', 'single'])
 const choiceKeys = new Set(['ア', 'イ', 'ウ', 'エ'])
@@ -39,6 +40,33 @@ const isPracticeSession = (value: unknown): value is PracticeSession => {
     && isNonNegativeNumber(value.correctCount)
     && isNonNegativeNumber(value.wrongCount)
     && isNonNegativeNumber(value.elapsedSeconds)
+    && answersAreValid
+}
+
+
+
+const isMockExamSession = (value: unknown): value is MockExamSession => {
+  if (!isRecord(value) || value.mode !== 'morning-mock' || !Array.isArray(value.questionIds) || !isRecord(value.answers)) return false
+  const uniqueQuestionIds = new Set(value.questionIds)
+  const answersAreValid = Object.entries(value.answers).every(([questionId, answer]) => uniqueQuestionIds.has(questionId)
+    && isRecord(answer)
+    && (answer.selectedAnswer === undefined || choiceKeys.has(String(answer.selectedAnswer)))
+    && (answer.confidence === undefined || confidenceLevels.has(String(answer.confidence)))
+    && (answer.answeredAt === undefined || typeof answer.answeredAt === 'string')
+    && (answer.elapsedSeconds === undefined || isNonNegativeNumber(answer.elapsedSeconds))
+    && (answer.marked === undefined || typeof answer.marked === 'boolean'))
+  return typeof value.sessionId === 'string'
+    && value.questionIds.length > 0
+    && uniqueQuestionIds.size === value.questionIds.length
+    && value.questionIds.every(id => typeof id === 'string' && Boolean(id))
+    && Number.isInteger(value.currentIndex)
+    && Number(value.currentIndex) >= 0
+    && Number(value.currentIndex) < value.questionIds.length
+    && typeof value.startedAt === 'string'
+    && Number.isFinite(new Date(value.startedAt).getTime())
+    && (value.finishedAt === null || (typeof value.finishedAt === 'string' && Number.isFinite(new Date(value.finishedAt).getTime())))
+    && Number.isInteger(value.durationSeconds)
+    && Number(value.durationSeconds) > 0
     && answersAreValid
 }
 
@@ -133,4 +161,36 @@ export const resetData = () => {
     localStorage.removeItem(BOOKMARKS_KEY)
   } catch { /* Storage may be unavailable in restricted browser contexts. */ }
   resetCurrentSession()
+  resetMockExamSession()
+}
+
+
+export const loadMockExamSession = (): MockExamSession | null => {
+  try {
+    const value: unknown = JSON.parse(localStorage.getItem(MOCK_EXAM_SESSION_KEY) || 'null')
+    if (value === null) return null
+    if (!isMockExamSession(value)) {
+      localStorage.removeItem(MOCK_EXAM_SESSION_KEY)
+      return null
+    }
+    return {
+      ...value,
+      questionIds: value.questionIds.map(resolveQuestionId),
+      answers: Object.fromEntries(Object.entries(value.answers).map(([id, answer]) => [resolveQuestionId(id), answer])),
+    }
+  } catch {
+    try { localStorage.removeItem(MOCK_EXAM_SESSION_KEY) } catch { /* Ignore cleanup errors. */ }
+    return null
+  }
+}
+
+export const saveMockExamSession = (value: MockExamSession | null) => {
+  try {
+    if (value && isMockExamSession(value)) localStorage.setItem(MOCK_EXAM_SESSION_KEY, JSON.stringify(value))
+    else localStorage.removeItem(MOCK_EXAM_SESSION_KEY)
+  } catch { /* Storage may be unavailable or full. */ }
+}
+
+export const resetMockExamSession = () => {
+  try { localStorage.removeItem(MOCK_EXAM_SESSION_KEY) } catch { /* Storage may be unavailable in restricted browser contexts. */ }
 }

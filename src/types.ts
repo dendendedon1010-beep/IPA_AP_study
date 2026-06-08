@@ -92,3 +92,23 @@ export interface PracticeSession {
   elapsedSeconds: number
   answers: SessionAnswer[]
 }
+
+
+export interface MockExamAnswer {
+  selectedAnswer?: ChoiceKey
+  confidence?: Confidence
+  answeredAt?: string
+  elapsedSeconds?: number
+  marked?: boolean
+}
+
+export interface MockExamSession {
+  sessionId: string
+  mode: 'morning-mock'
+  questionIds: string[]
+  currentIndex: number
+  answers: Record<string, MockExamAnswer>
+  startedAt: string
+  finishedAt: string | null
+  durationSeconds: number
+}

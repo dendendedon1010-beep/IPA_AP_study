@@ -10,6 +10,7 @@ import {
   CircleHelp,
   Clock3,
   Flame,
+  Flag,
   Home,
   Lightbulb,
   ClipboardCheck,
@@ -26,11 +27,12 @@ import {
   X,
 } from 'lucide-react'
 import { questions } from './data/questions'
+import { createMorningMockExam, formatMockExamTime, getMockExamRemainingSeconds } from './lib/mockExam'
 import { buildReviewSchedule, getDueReviewItems, getReviewDayDistance, getReviewPriorityForQuestion, getTodayDateString, getUpcomingReviewItems } from './lib/reviewSchedule'
-import { defaultSettings, loadBookmarks, loadHistory, loadSession, loadSettings, resetData, saveBookmarks, saveHistory, saveSession, saveSettings } from './lib/storage'
-import type { AnswerHistory, BookmarkStore, ChoiceKey, Confidence, MistakeTag, PracticeMode, PracticeSession, Question, ReviewPriority, ReviewScheduleItem, Settings, Tab } from './types'
+import { defaultSettings, loadBookmarks, loadHistory, loadMockExamSession, loadSession, loadSettings, resetData, saveBookmarks, saveHistory, saveMockExamSession, saveSession, saveSettings } from './lib/storage'
+import type { AnswerHistory, BookmarkStore, ChoiceKey, Confidence, MistakeTag, MockExamAnswer, MockExamSession, PracticeMode, PracticeSession, Question, ReviewPriority, ReviewScheduleItem, Settings, Tab } from './types'
 
-const APP_VERSION = 'v1.9.0'
+const APP_VERSION = 'v2.0.0'
 const nav: { id: Tab; label: string; icon: typeof Home }[] = [
   { id: 'home', label: 'ホーム', icon: Home },
   { id: 'practice', label: '演習', icon: BookOpen },
@@ -197,6 +199,8 @@ function App() {
   const [settings, setSettings] = useState<Settings>(loadSettings)
   const [bookmarks, setBookmarks] = useState<BookmarkStore>(loadBookmarks)
   const [session, setSession] = useState<PracticeSession | null>(loadSession)
+  const [mockExam, setMockExam] = useState<MockExamSession | null>(loadMockExamSession)
+  const [mockExamOpen, setMockExamOpen] = useState(false)
   const safeHistory = Array.isArray(history) ? history : []
   const safeSettings = settings ?? defaultSettings
   const safeBookmarks = Array.isArray(bookmarks) ? bookmarks : []
@@ -220,6 +224,7 @@ function App() {
   useEffect(() => saveBookmarks(safeBookmarks), [safeBookmarks])
   useEffect(() => saveSettings(safeSettings), [safeSettings])
   useEffect(() => saveSession(session), [session])
+  useEffect(() => saveMockExamSession(mockExam), [mockExam])
   useEffect(() => { if (session) setTab('practice') }, [])
   useEffect(() => {
     const savedAnswer = session?.answers.find(answer => answer.questionId === currentQuestionId)
@@ -310,20 +315,63 @@ function App() {
     setResult(false)
   }
 
-  const goTab = (id: Tab) => {
-    setTab(id)
-    if (id !== 'practice') leaveSession()
+  const startMockExam = () => {
+    const nextSession = createMorningMockExam(questions)
+    if (!nextSession.questionIds.length) return
+    setSession(null)
+    setMockExam(nextSession)
+    setMockExamOpen(true)
+    setTab('practice')
   }
 
-  const title = session?.finishedAt ? '演習結果' : session ? (session.mode === 'mock-exam' ? '模擬試験モード' : session.mode === 'single' ? '問題詳細' : session.mode === 'today-review' ? '今日の復習' : '午前問題 演習') : nav.find(item => item.id === tab)?.label ?? ''
+  function finishMockExam(automatic = false) {
+    if (!mockExam || mockExam.finishedAt) return
+    const unanswered = mockExam.questionIds.filter(id => !mockExam.answers[id]?.selectedAnswer).length
+    if (!automatic && !window.confirm(`${unanswered ? `未回答が${unanswered}問あります。` : ''}採点しますか？
+採点後は結果画面に進みます。`)) return
+    const finishedAt = new Date().toISOString()
+    const entries = mockExam.questionIds.flatMap(questionId => {
+      const saved = mockExam.answers[questionId]
+      const question = questions.find(item => item.id === questionId)
+      if (!saved?.selectedAnswer || !question) return []
+      const confidence = saved.confidence ?? 'normal'
+      const isCorrect = saved.selectedAnswer === question.correctAnswer
+      return [{
+        id: crypto.randomUUID(),
+        questionId,
+        selectedAnswer: saved.selectedAnswer,
+        isCorrect,
+        confidence,
+        elapsedSeconds: saved.elapsedSeconds ?? 0,
+        answeredAt: saved.answeredAt ?? finishedAt,
+        mistakeTag: inferMistakeTag(question, isCorrect, confidence),
+      } satisfies AnswerHistory]
+    })
+    setHistory(current => [...(Array.isArray(current) ? current : []), ...entries])
+    setMockExam(current => current && ({ ...current, finishedAt }))
+    setMockExamOpen(true)
+  }
+
+  const startMockReview = (items: Question[], mode: PracticeMode) => {
+    setMockExam(null)
+    setMockExamOpen(false)
+    startPractice(items, mode)
+  }
+
+  const goTab = (id: Tab) => {
+    setTab(id)
+    if (id !== 'practice') { leaveSession(); setMockExamOpen(false) }
+  }
+
+  const title = mockExamOpen ? (mockExam?.finishedAt ? '午前模試 結果' : '午前模試モード') : session?.finishedAt ? '演習結果' : session ? (session.mode === 'mock-exam' ? '模擬試験モード' : session.mode === 'single' ? '問題詳細' : session.mode === 'today-review' ? '今日の復習' : '午前問題 演習') : nav.find(item => item.id === tab)?.label ?? ''
 
   return (
     <div className={safeSettings.theme === 'dark' ? 'dark bg-[#101713]' : ''}>
       <div className="app-shell mx-auto min-h-screen max-w-[480px] bg-paper shadow-2xl dark:bg-[#101713]">
         <header className="safe-top fixed left-1/2 top-0 z-40 flex h-[76px] w-full max-w-[480px] -translate-x-1/2 items-center justify-between border-b border-black/5 bg-paper/95 px-5 backdrop-blur dark:bg-[#101713]/95">
           <div className="flex items-center gap-3">
-            {session && (
-              <button aria-label={session.mode === 'single' ? '問題一覧へ戻る' : '演習を終了'} onClick={leaveSession} className="-ml-2 grid size-11 place-items-center rounded-full hover:bg-black/5">
+            {(session || mockExamOpen) && (
+              <button aria-label={mockExamOpen ? '午前模試メニューへ戻る' : session?.mode === 'single' ? '問題一覧へ戻る' : '演習を終了'} onClick={mockExamOpen ? () => setMockExamOpen(false) : leaveSession} className="-ml-2 grid size-11 place-items-center rounded-full hover:bg-black/5">
                 <ChevronLeft size={22} />
               </button>
             )}
@@ -332,7 +380,9 @@ function App() {
               <h1 className="text-[17px] font-bold tracking-tight">{title}</h1>
             </div>
           </div>
-          {session ? (
+          {mockExamOpen && mockExam ? (
+            <span className="tabular rounded-full bg-white px-3 py-1.5 text-xs font-bold shadow-sm dark:bg-white/10">{mockExam.finishedAt ? '完了' : `${mockExam.currentIndex + 1} / ${mockExam.questionIds.length}`}</span>
+          ) : session ? (
             <span className="tabular rounded-full bg-white px-3 py-1.5 text-xs font-bold shadow-sm dark:bg-white/10">{session.finishedAt ? '完了' : `${session.currentIndex + 1} / ${session.totalQuestions}`}</span>
           ) : (
             <div className="relative grid size-10 place-items-center rounded-full bg-white shadow-sm dark:bg-white/10">
@@ -342,9 +392,19 @@ function App() {
           )}
         </header>
 
-        <main ref={contentRef} className={`min-w-0 max-w-full overflow-x-hidden px-4 pt-[92px] ${session ? 'pb-[138px]' : 'pb-[104px]'}`}>
+        <main ref={contentRef} className={`min-w-0 max-w-full overflow-x-hidden px-4 pt-[92px] ${session || mockExamOpen ? 'pb-[138px]' : 'pb-[104px]'}`}>
           {tab === 'home' && <HomeScreen history={safeHistory} onStart={startPractice} onReview={() => setTab('review')} />}
-          {tab === 'practice' && (session?.finishedAt ? (
+          {tab === 'practice' && (mockExamOpen && mockExam ? (
+            <MockExamFlow
+              session={mockExam}
+              onChange={update => setMockExam(current => current ? update(current) : current)}
+              onFinish={finishMockExam}
+              onReview={startMockReview}
+              onRestart={startMockExam}
+              onAnalytics={() => { setMockExamOpen(false); setTab('analytics') }}
+              onHome={() => { setMockExamOpen(false); setTab('home') }}
+            />
+          ) : session?.finishedAt ? (
             <ResultScreen
               session={session}
               questions={sessionQuestions}
@@ -358,7 +418,7 @@ function App() {
               {session.mode === 'mock-exam' && <div className="mb-3 flex items-center justify-between rounded-xl bg-white px-4 py-3 text-[11px] font-bold shadow-sm dark:bg-white/5"><span>回答済み {session.answers.length} / {session.totalQuestions}</span><span className="text-slate-400">正解 {session.correctCount}・不正解 {session.wrongCount}</span></div>}
               <QuestionScreen question={currentQuestion} selected={selected} setSelected={setSelected} result={result} confidence={confidence} setConfidence={setConfidence} bookmarked={safeBookmarks.includes(currentQuestion.id)} onToggleBookmark={() => toggleBookmark(currentQuestion.id)} />
             </>
-          ) : <PracticeMenu history={safeHistory} bookmarks={safeBookmarks} onStart={startPractice} onToggleBookmark={toggleBookmark} />)}
+          ) : <PracticeMenu history={safeHistory} bookmarks={safeBookmarks} mockExam={mockExam} onStart={startPractice} onStartMock={startMockExam} onResumeMock={() => setMockExamOpen(true)} onDiscardMock={() => setMockExam(null)} onToggleBookmark={toggleBookmark} />)}
           {tab === 'review' && <ReviewScreen history={safeHistory} bookmarks={safeBookmarks} onStart={startPractice} />}
           {tab === 'analytics' && <Analytics history={safeHistory} />}
           {tab === 'settings' && (
@@ -370,12 +430,14 @@ function App() {
                 setHistory([])
                 setSettings(loadSettings())
                 setBookmarks([])
+                setMockExam(null)
+                setMockExamOpen(false)
               }}
             />
           )}
         </main>
 
-        {session && !session.finishedAt && tab === 'practice' ? (
+        {mockExamOpen ? null : session && !session.finishedAt && tab === 'practice' ? (
           <div className="safe-bottom fixed bottom-0 left-1/2 z-50 w-full max-w-[480px] -translate-x-1/2 border-t border-black/5 bg-white/95 px-4 pt-3 backdrop-blur dark:bg-[#18211c]/95">
             {result ? (
               <button onClick={next} className="flex h-14 w-full items-center justify-center gap-2 rounded-2xl bg-ink font-bold text-white shadow-lg dark:bg-lime dark:text-ink">
@@ -477,7 +539,109 @@ function Ranking({ title, items, empty, tone }: { title: string; items: ReturnTy
   )
 }
 
-function PracticeMenu({ history, bookmarks, onStart, onToggleBookmark }: { history: AnswerHistory[]; bookmarks: BookmarkStore; onStart: (items?: Question[], mode?: PracticeMode) => void; onToggleBookmark: (questionId: string) => void }) {
+function MockExamFlow({ session, onChange, onFinish, onReview, onRestart, onAnalytics, onHome }: { session: MockExamSession; onChange: (updater: (current: MockExamSession) => MockExamSession) => void; onFinish: (automatic?: boolean) => void; onReview: (items: Question[], mode: PracticeMode) => void; onRestart: () => void; onAnalytics: () => void; onHome: () => void }) {
+  const [showOverview, setShowOverview] = useState(false)
+  const [remainingSeconds, setRemainingSeconds] = useState(() => getMockExamRemainingSeconds(session))
+  const questionStartedAt = useRef(Date.now())
+  const sessionQuestions = session.questionIds.map(id => questions.find(question => question.id === id)).filter((question): question is Question => Boolean(question))
+  const currentQuestion = sessionQuestions[session.currentIndex]
+  const currentAnswer = currentQuestion ? session.answers[currentQuestion.id] ?? {} : {}
+  const answeredCount = session.questionIds.filter(id => Boolean(session.answers[id]?.selectedAnswer)).length
+  const unansweredCount = session.questionIds.length - answeredCount
+  const markedCount = session.questionIds.filter(id => session.answers[id]?.marked).length
+
+  useEffect(() => {
+    if (session.finishedAt) return
+    const updateRemaining = () => {
+      const remaining = getMockExamRemainingSeconds(session)
+      setRemainingSeconds(remaining)
+      if (remaining === 0) onFinish(true)
+    }
+    updateRemaining()
+    const timer = window.setInterval(updateRemaining, 1000)
+    return () => window.clearInterval(timer)
+  }, [session.sessionId, session.startedAt, session.finishedAt, onFinish])
+
+  useEffect(() => { questionStartedAt.current = Date.now() }, [session.currentIndex])
+
+  const updateAnswer = (patch: Partial<MockExamAnswer>) => {
+    if (!currentQuestion) return
+    onChange(current => ({
+      ...current,
+      answers: {
+        ...current.answers,
+        [currentQuestion.id]: {
+          ...current.answers[currentQuestion.id],
+          ...patch,
+          elapsedSeconds: Math.max(current.answers[currentQuestion.id]?.elapsedSeconds ?? 0, Math.round((Date.now() - questionStartedAt.current) / 1000)),
+        },
+      },
+    }))
+  }
+
+  const goToQuestion = (index: number) => {
+    onChange(current => ({ ...current, currentIndex: Math.max(0, Math.min(index, current.questionIds.length - 1)) }))
+    setShowOverview(false)
+  }
+
+  if (session.finishedAt) {
+    const answered = session.questionIds.flatMap(id => {
+      const question = questions.find(item => item.id === id)
+      const answer = session.answers[id]
+      return question && answer?.selectedAnswer ? [{ question, answer }] : []
+    })
+    const correctCount = answered.filter(({ question, answer }) => answer.selectedAnswer === question.correctAnswer).length
+    const wrongQuestions = answered.filter(({ question, answer }) => answer.selectedAnswer !== question.correctAnswer).map(({ question }) => question)
+    const unansweredQuestions = sessionQuestions.filter(question => !session.answers[question.id]?.selectedAnswer)
+    const lowConfidenceQuestions = sessionQuestions.filter(question => session.answers[question.id]?.confidence === 'low')
+    const markedQuestions = sessionQuestions.filter(question => session.answers[question.id]?.marked)
+    const accuracy = session.questionIds.length ? Math.round((correctCount / session.questionIds.length) * 100) : 0
+    const passTarget = Math.ceil(session.questionIds.length * 0.6)
+    const fields = [...new Set(sessionQuestions.map(question => question.field))].map(field => {
+      const fieldQuestions = sessionQuestions.filter(question => question.field === field)
+      const fieldCorrect = fieldQuestions.filter(question => session.answers[question.id]?.selectedAnswer === question.correctAnswer).length
+      return { field, correct: fieldCorrect, total: fieldQuestions.length, accuracy: Math.round((fieldCorrect / fieldQuestions.length) * 100) }
+    })
+    const recommendation = wrongQuestions.length ? `不正解${wrongQuestions.length}問を優先し、分野別正答率が低い領域から復習しましょう。` : unansweredQuestions.length ? '未回答問題を解き直し、時間配分を確認しましょう。' : lowConfidenceQuestions.length ? '自信なし問題を復習して、知識を確実にしましょう。' : '合格目安をクリアしました。復習スケジュールに沿って定着を維持しましょう。'
+    return (
+      <div className="space-y-4">
+        <section className="rounded-[28px] bg-ink p-5 text-white"><p className="text-[11px] font-bold text-lime">MORNING MOCK RESULT</p><div className="mt-3 flex items-end justify-between"><div><p className="text-4xl font-bold tabular">{accuracy}<span className="text-lg">%</span></p><p className="mt-1 text-xs text-white/60">正答率</p></div><p className={`rounded-full px-3 py-2 text-xs font-bold ${accuracy >= 60 ? 'bg-lime text-ink' : 'bg-rose-500 text-white'}`}>{accuracy >= 60 ? '合格目安クリア' : `合格目安まであと${Math.max(0, passTarget - correctCount)}問`}</p></div><div className="mt-5 grid grid-cols-3 gap-2"><ResultMetric label="正解" value={`${correctCount}問`} /><ResultMetric label="不正解" value={`${wrongQuestions.length}問`} /><ResultMetric label="未回答" value={`${unansweredQuestions.length}問`} /></div><p className="mt-4 text-[10px] text-white/60">{session.questionIds.length}問中{passTarget}問以上（60%以上）で合格目安クリア</p></section>
+        <section className="rounded-[24px] bg-white p-5 shadow-sm dark:bg-white/5"><h3 className="font-bold">分野別正答率</h3><div className="mt-4 space-y-3">{fields.map(item => <div key={item.field}><div className="flex justify-between text-xs"><span className="font-bold">{item.field}</span><span className="tabular font-bold">{item.correct}/{item.total}・{item.accuracy}%</span></div><div className="mt-2 h-1.5 rounded-full bg-slate-100 dark:bg-white/10"><div className="h-full rounded-full bg-moss dark:bg-lime" style={{ width: `${item.accuracy}%` }} /></div></div>)}</div></section>
+        <ResultQuestionList title="間違えた問題一覧" items={wrongQuestions} empty="不正解はありません" />
+        <ResultQuestionList title="未回答問題一覧" items={unansweredQuestions} empty="未回答はありません" />
+        <ResultQuestionList title="自信なし問題一覧" items={lowConfidenceQuestions} empty="自信なし問題はありません" />
+        <ResultQuestionList title="見直しマーク問題一覧" items={markedQuestions} empty="見直しマーク問題はありません" />
+        <section className="rounded-[22px] bg-lime/30 p-4"><p className="flex items-center gap-2 text-xs font-bold text-moss dark:text-lime"><Sparkles size={17} />復習おすすめ</p><p className="mt-2 text-sm font-bold leading-relaxed">{recommendation}</p></section>
+        <div className="space-y-2">
+          <button disabled={!wrongQuestions.length} onClick={() => onReview(wrongQuestions, 'wrong')} className="h-12 w-full rounded-xl bg-ink text-sm font-bold text-white disabled:bg-slate-200 disabled:text-slate-400 dark:bg-lime dark:text-ink">間違えた問題だけ復習</button>
+          <button disabled={!unansweredQuestions.length} onClick={() => onReview(unansweredQuestions, 'unanswered')} className="h-12 w-full rounded-xl border border-ink text-sm font-bold disabled:border-slate-200 disabled:text-slate-400 dark:border-lime">未回答問題だけ復習</button>
+          <button disabled={!lowConfidenceQuestions.length} onClick={() => onReview(lowConfidenceQuestions, 'low-confidence')} className="h-12 w-full rounded-xl border border-ink text-sm font-bold disabled:border-slate-200 disabled:text-slate-400 dark:border-lime">自信なし問題だけ復習</button>
+          <button disabled={!markedQuestions.length} onClick={() => onReview(markedQuestions, 'recommended')} className="h-12 w-full rounded-xl border border-ink text-sm font-bold disabled:border-slate-200 disabled:text-slate-400 dark:border-lime">見直しマーク問題を復習</button>
+          <button onClick={onRestart} className="h-12 w-full rounded-xl bg-white text-sm font-bold shadow-sm dark:bg-white/5">もう一度午前模試</button>
+          <div className="grid grid-cols-2 gap-2"><button onClick={onAnalytics} className="h-12 rounded-xl bg-white text-sm font-bold shadow-sm dark:bg-white/5">分析を見る</button><button onClick={onHome} className="h-12 rounded-xl bg-white text-sm font-bold shadow-sm dark:bg-white/5">ホームへ戻る</button></div>
+        </div>
+      </div>
+    )
+  }
+
+  if (showOverview) {
+    return (
+      <div className="space-y-4"><section className="rounded-[24px] bg-white p-5 shadow-sm dark:bg-white/5"><div className="flex items-center justify-between"><h2 className="font-bold">回答一覧</h2><span className="tabular text-sm font-bold text-moss dark:text-lime">残り {formatMockExamTime(remainingSeconds)}</span></div><div className="mt-4 grid grid-cols-2 gap-2 text-center"><div className="rounded-xl bg-slate-50 p-3 dark:bg-white/5"><p className="text-[10px] text-slate-400">未回答</p><p className="mt-1 font-bold">{unansweredCount}問</p></div><div className="rounded-xl bg-slate-50 p-3 dark:bg-white/5"><p className="text-[10px] text-slate-400">見直し</p><p className="mt-1 font-bold">{markedCount}問</p></div></div><div className="mt-5 grid grid-cols-5 gap-2">{session.questionIds.map((id, index) => { const answer = session.answers[id]; return <button key={id} onClick={() => goToQuestion(index)} className={`relative aspect-square rounded-xl text-xs font-bold ${answer?.selectedAnswer ? 'bg-moss text-white dark:bg-lime dark:text-ink' : 'bg-slate-100 text-slate-500 dark:bg-white/10 dark:text-slate-300'}`}>{index + 1}{answer?.marked && <Flag size={10} fill="currentColor" className="absolute right-1 top-1" />}</button> })}</div></section><div className="safe-bottom fixed bottom-0 left-1/2 z-50 grid w-full max-w-[480px] -translate-x-1/2 grid-cols-2 gap-2 border-t border-black/5 bg-white/95 px-4 pt-3 backdrop-blur dark:bg-[#18211c]/95"><button onClick={() => setShowOverview(false)} className="h-12 rounded-xl border border-ink text-xs font-bold dark:border-lime">問題へ戻る</button><button onClick={() => onFinish(false)} className="h-12 rounded-xl bg-rose-500 text-xs font-bold text-white">模試を終了して採点</button></div></div>
+    )
+  }
+
+  if (!currentQuestion) return <p className="rounded-xl bg-white p-4 text-sm dark:bg-white/5">問題を読み込めませんでした。</p>
+  return (
+    <div className="space-y-4">
+      <section className="rounded-xl bg-white px-4 py-3 shadow-sm dark:bg-white/5"><div className="flex items-center justify-between text-xs font-bold"><span>問題番号：{session.currentIndex + 1} / {session.questionIds.length}</span><span className="tabular text-moss dark:text-lime">残り {formatMockExamTime(remainingSeconds)}</span></div><div className="mt-2 flex justify-between text-[10px] text-slate-500 dark:text-slate-300"><span>未回答 {unansweredCount}問</span><span>見直し {markedCount}問</span></div></section>
+      <section className="rounded-[24px] bg-white p-5 shadow-card dark:bg-white/5"><div className="flex items-center gap-2"><span className={`rounded-full px-2.5 py-1 text-[10px] font-bold ${fieldColor[currentQuestion.field] ?? 'bg-slate-100 text-slate-600'}`}>{currentQuestion.field}</span><span className="text-[10px] text-slate-400">{currentQuestion.subField}</span><button onClick={() => updateAnswer({ marked: !currentAnswer.marked })} className={`ml-auto flex h-10 items-center gap-1 rounded-xl px-3 text-[10px] font-bold ${currentAnswer.marked ? 'bg-amber-100 text-amber-700 dark:bg-amber-500/20 dark:text-amber-300' : 'bg-slate-100 text-slate-500 dark:bg-white/10 dark:text-slate-300'}`}><Flag size={15} fill={currentAnswer.marked ? 'currentColor' : 'none'} />後で見直す</button></div><p className="mt-5 whitespace-pre-wrap text-[15px] font-medium leading-7">{currentQuestion.questionText}</p><div className="mt-5 space-y-3">{currentQuestion.choices.map(choice => <button key={choice.key} onClick={() => updateAnswer({ selectedAnswer: choice.key, confidence: currentAnswer.confidence ?? 'normal', answeredAt: new Date().toISOString() })} className={`flex min-h-14 w-full items-start gap-3 rounded-2xl border p-3 text-left text-sm leading-6 ${currentAnswer.selectedAnswer === choice.key ? 'border-moss bg-emerald-50/50 dark:border-lime dark:bg-white/5' : 'border-slate-200 dark:border-white/10'}`}><span className={`mt-0.5 grid size-7 shrink-0 place-items-center rounded-full text-xs font-bold ${currentAnswer.selectedAnswer === choice.key ? 'bg-moss text-white dark:bg-lime dark:text-ink' : 'bg-slate-100 text-slate-500 dark:bg-white/10 dark:text-slate-300'}`}>{choice.key}</span><span>{choice.text}</span></button>)}</div></section>
+      <section className="rounded-[20px] border border-slate-200 p-4 dark:border-white/10"><p className="text-xs font-bold">この解答への自信</p><div className="mt-3 grid grid-cols-3 gap-2">{([['high', '自信あり'], ['normal', 'ふつう'], ['low', '自信なし']] as [Confidence, string][]).map(([value, label]) => <button key={value} onClick={() => updateAnswer({ confidence: value })} className={`h-11 rounded-xl text-[11px] font-bold ${currentAnswer.confidence === value || (!currentAnswer.confidence && value === 'normal') ? 'bg-moss text-white dark:bg-lime dark:text-ink' : 'bg-white text-slate-500 dark:bg-white/5 dark:text-slate-300'}`}>{label}</button>)}</div></section>
+      <div className="safe-bottom fixed bottom-0 left-1/2 z-50 w-full max-w-[480px] -translate-x-1/2 border-t border-black/5 bg-white/95 px-4 pt-3 backdrop-blur dark:bg-[#18211c]/95"><div className="grid grid-cols-3 gap-2"><button disabled={session.currentIndex === 0} onClick={() => goToQuestion(session.currentIndex - 1)} className="flex h-12 items-center justify-center rounded-xl border border-slate-200 text-xs font-bold disabled:opacity-30 dark:border-white/10"><ChevronLeft size={17} />前へ</button><button onClick={() => setShowOverview(true)} className="h-12 rounded-xl border border-ink text-[11px] font-bold dark:border-lime">回答一覧へ</button>{session.currentIndex < session.questionIds.length - 1 ? <button onClick={() => goToQuestion(session.currentIndex + 1)} className="flex h-12 items-center justify-center rounded-xl bg-ink text-xs font-bold text-white dark:bg-lime dark:text-ink">次へ<ChevronRight size={17} /></button> : <button onClick={() => onFinish(false)} className="h-12 rounded-xl bg-rose-500 text-[11px] font-bold text-white">終了・採点</button>}</div></div>
+    </div>
+  )
+}
+
+function PracticeMenu({ history, bookmarks, mockExam, onStart, onStartMock, onResumeMock, onDiscardMock, onToggleBookmark }: { history: AnswerHistory[]; bookmarks: BookmarkStore; mockExam: MockExamSession | null; onStart: (items?: Question[], mode?: PracticeMode) => void; onStartMock: () => void; onResumeMock: () => void; onDiscardMock: () => void; onToggleBookmark: (questionId: string) => void }) {
   const latest = useMemo(() => getLatestAnswers(history), [history])
   const recommendation = useMemo(() => getRecommendation(history), [history])
   const dueQuestions = useMemo(() => questionsForSchedule(getDueReviewItems(buildReviewSchedule(questions, history))), [history])
@@ -494,7 +658,6 @@ function PracticeMenu({ history, bookmarks, onStart, onToggleBookmark }: { histo
     { title: 'ブックマーク問題を復習', description: bookmarked.length ? '保存した問題だけを出題' : 'ブックマークされた問題はありません', icon: Bookmark, items: bookmarked, mode: 'bookmarked' as PracticeMode, color: 'bg-yellow-50 text-yellow-600' },
     { title: '未回答問題', description: 'まだ解いていない問題', icon: Lightbulb, items: unanswered, mode: 'unanswered' as PracticeMode, color: 'bg-sky-50 text-sky-600' },
     { title: 'ランダム10問', description: '全分野からランダムに出題', icon: RotateCcw, items: shuffle(questions).slice(0, 10), mode: 'random-10' as PracticeMode, color: 'bg-violet-50 text-violet-600' },
-    { title: '模擬試験モード', description: `午前問題から${Math.min(10, morningQuestions.length)}問`, icon: ClipboardCheck, items: shuffle(morningQuestions).slice(0, 10), mode: 'mock-exam' as PracticeMode, color: 'bg-emerald-50 text-emerald-600' },
   ]
   return (
     <div className="space-y-4">
@@ -504,6 +667,11 @@ function PracticeMenu({ history, bookmarks, onStart, onToggleBookmark }: { histo
         <p className="mt-2 text-xs leading-relaxed text-white/60">復習状況や学習ペースに合う問題セットを選べます。</p>
       </section>
       <QuestionList history={history} bookmarks={bookmarks} onStart={onStart} onToggleBookmark={onToggleBookmark} />
+      <section className="rounded-[24px] border-2 border-moss bg-white p-5 shadow-sm dark:border-lime dark:bg-white/5">
+        <div className="flex items-start gap-3"><span className="grid size-12 shrink-0 place-items-center rounded-xl bg-emerald-50 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-300"><ClipboardCheck size={22} /></span><div><h3 className="font-bold">午前模試 {Math.min(80, morningQuestions.length)}問</h3><p className="mt-1 text-[11px] leading-relaxed text-slate-500 dark:text-slate-300">本番形式で通し演習・制限時間 150分・最後に一括採点</p></div></div>
+        {mockExam && !mockExam.finishedAt ? <div className="mt-4 rounded-xl bg-lime/30 p-3"><p className="text-xs font-bold">途中の午前模試があります</p><div className="mt-3 grid grid-cols-2 gap-2"><button onClick={onResumeMock} className="h-11 rounded-xl bg-ink text-xs font-bold text-white dark:bg-lime dark:text-ink">続きから再開</button><button onClick={onDiscardMock} className="h-11 rounded-xl bg-white text-xs font-bold text-rose-600 shadow-sm dark:bg-white/10">破棄して新しく開始</button></div></div> : mockExam?.finishedAt ? <button onClick={onResumeMock} className="mt-4 h-12 w-full rounded-xl bg-ink text-sm font-bold text-white dark:bg-lime dark:text-ink">前回の模試結果を見る</button> : <button onClick={onStartMock} disabled={!morningQuestions.length} className="mt-4 h-12 w-full rounded-xl bg-ink text-sm font-bold text-white disabled:opacity-50 dark:bg-lime dark:text-ink">午前模試を開始</button>}
+        {mockExam && !mockExam.finishedAt && <button onClick={() => { onDiscardMock(); onStartMock() }} className="mt-2 h-10 w-full text-xs font-bold text-slate-500 dark:text-slate-300">破棄して新しく開始</button>}
+      </section>
       <section className="space-y-2">
         {modes.map(({ title, description, icon: Icon, items, mode, color }) => (
           <button key={title} disabled={!items.length} onClick={() => onStart(items, mode)} className="flex min-h-[72px] w-full items-center gap-3 rounded-[20px] bg-white p-4 text-left shadow-sm disabled:opacity-50 dark:bg-white/5">
