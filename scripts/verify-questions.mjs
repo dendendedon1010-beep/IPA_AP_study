@@ -7,7 +7,8 @@ import ts from 'typescript'
 const root = new URL('../', import.meta.url)
 const temporaryDirectory = await mkdtemp(join(tmpdir(), 'ap-study-questions-'))
 const choiceKeys = ['ア', 'イ', 'ウ', 'エ']
-const idPattern = /^ap-r\d{2}-(spring|autumn)-(am|pm)-q\d{3}$/
+const ipaIdPattern = /^ap-r\d{2}-(spring|autumn)-(am|pm)-q\d{3}$/
+const originalIdPattern = /^ap-original-am-[a-z0-9]+(?:-[a-z0-9]+)*-q\d{3}$/
 const errors = []
 
 const transpile = async (sourcePath, outputName) => {
@@ -45,7 +46,11 @@ try {
     requireText('id', question?.id)
     if (ids.has(question?.id)) errors.push(`${label}: id が重複しています。`)
     ids.add(question?.id)
-    if (!idPattern.test(question?.id ?? '')) errors.push(`${label}: id は ap-r05-autumn-am-q001 形式にしてください。`)
+    const isIpaId = ipaIdPattern.test(question?.id ?? '')
+    const isOriginalId = originalIdPattern.test(question?.id ?? '')
+    if (!isIpaId && !isOriginalId) errors.push(`${label}: id は ap-r05-autumn-am-q001 又は ap-original-am-security-q001 形式にしてください。`)
+    if (question?.isQuoteFromIpa === true && !isIpaId) errors.push(`${label}: IPA引用問題には年度・期・問番号を含むIDが必要です。`)
+    if (question?.isQuoteFromIpa === false && !isOriginalId && !question?.legacyIds?.length) errors.push(`${label}: オリジナル問題には ap-original-am-... 形式のIDが必要です。`)
 
     for (const legacyId of question?.legacyIds ?? []) {
       requireText('legacyIds[]', legacyId)
@@ -88,7 +93,7 @@ try {
       const season = question.examSeason === '春期' ? 'spring' : 'autumn'
       const examType = question.examType === 'morning' ? 'am' : 'pm'
       const expectedId = `ap-r${reiwaYear}-${season}-${examType}-q${String(question.questionNumber).padStart(3, '0')}`
-      if (question.id !== expectedId) errors.push(`${label}: メタデータから期待されるIDは ${expectedId} です。`)
+      if (isIpaId && question.id !== expectedId) errors.push(`${label}: メタデータから期待されるIDは ${expectedId} です。`)
     }
   }
 
