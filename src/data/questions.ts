@@ -19,6 +19,7 @@ interface QuestionSeed {
   points: string[]
   keywords: string[]
   quoted?: boolean
+  sourceName?: string
 }
 
 const keys: ChoiceKey[] = ['ア', 'イ', 'ウ', 'エ']
@@ -39,7 +40,7 @@ const createQuestion = (seed: QuestionSeed): Question => {
     choices,
     correctAnswer: seed.correctAnswer,
     officialAnswerText: `${seed.correctAnswer}：${correctChoice?.text ?? ''}`,
-    sourceName: seed.quoted ? '情報処理推進機構（IPA）令和6年度秋期 午前問題' : 'AP Study オリジナル問題（IPA APシラバス準拠）',
+    sourceName: seed.quoted ? '情報処理推進機構（IPA）令和6年度秋期 午前問題' : (seed.sourceName ?? 'AP Study オリジナル問題（IPA APシラバス準拠）'),
     sourceUrl: seed.quoted ? ipaPastQuestionUrl : syllabusUrl,
     isQuoteFromIpa: Boolean(seed.quoted),
     explanation: {
@@ -51,6 +52,598 @@ const createQuestion = (seed: QuestionSeed): Question => {
     },
   }
 }
+
+
+interface V180QuestionSeed {
+  id: string
+  questionNumber: number
+  field: FieldName
+  subField: string
+  questionText: string
+  choices: [string, string, string, string]
+  correctAnswer: ChoiceKey
+  choiceReasons: [string, string, string, string]
+  points: string[]
+  keywords: string[]
+}
+
+const createV180Seed = (seed: V180QuestionSeed): QuestionSeed => {
+  const answerOffset = [...seed.id].reduce((total, character) => total + character.charCodeAt(0), 0) % keys.length
+  const rotate = <T,>(values: [T, T, T, T]): [T, T, T, T] => keys.map((_, index) => values[(index - answerOffset + keys.length) % keys.length]) as [T, T, T, T]
+  const choices = rotate(seed.choices)
+  const choiceReasons = rotate(seed.choiceReasons)
+  const correctAnswer = keys[(keys.indexOf(seed.correctAnswer) + answerOffset) % keys.length]
+  return {
+    id: seed.id,
+    questionNumber: seed.questionNumber,
+    field: seed.field,
+    subField: seed.subField,
+    questionText: seed.questionText,
+    choices,
+    correctAnswer,
+    correctReason: choiceReasons[keys.indexOf(correctAnswer)],
+    wrongReasons: Object.fromEntries(keys.map((key, index) => [key, choiceReasons[index]])),
+    points: seed.points,
+    keywords: seed.keywords,
+    sourceName: 'AP Study original',
+  }
+}
+
+const v180QuestionSeeds: QuestionSeed[] = [
+  createV180Seed({
+    id: 'ap-original-am-basic-theory-q010', questionNumber: 10, field: FIELDS.basicTheory, subField: '計算量',
+    questionText: '要素数 n の配列を先頭から順に調べる線形探索について、最悪時の時間計算量はどれか。',
+    choices: ['O(1)', 'O(log n)', 'O(n)', 'O(n²)'], correctAnswer: 'ウ',
+    choiceReasons: ['入力件数に依存せず一定時間で終わる処理の計算量であり、線形探索には当てはまりません。', '探索範囲を半分ずつ狭める二分探索の計算量です。', '目的の要素が末尾にある場合や存在しない場合は最大 n 要素を調べるのでO(n)です。', '全要素の組合せを調べるような二重ループの代表的な計算量です。'],
+    points: ['線形探索は整列済みでなくても使えるが、最悪時には全要素を確認する。'], keywords: ['線形探索', '時間計算量', 'O(n)'],
+  }),
+  createV180Seed({
+    id: 'ap-original-am-basic-theory-q011', questionNumber: 11, field: FIELDS.basicTheory, subField: '木構造',
+    questionText: '二分探索木の各節点について成り立つ性質として、適切なものはどれか。',
+    choices: ['左部分木の全てのキーは節点のキーより小さく、右部分木の全てのキーは大きい', '全ての葉は必ず同じ深さにある', '各節点は必ず二つの子をもつ', '根から葉までの経路長は常に1である'], correctAnswer: 'ア',
+    choiceReasons: ['この大小関係を保つことで、比較結果に応じて探索する部分木を絞り込めます。', '葉の深さがそろうのは完全に平衡した特定の木の性質で、一般の二分探索木の条件ではありません。', '子を一つだけもつ節点や子をもたない葉も存在できます。', '木の高さは要素の挿入順などによって変わり、経路長が常に1とは限りません。'],
+    points: ['二分探索木では左・節点・右の順に走査するとキーを昇順に得られる。'], keywords: ['二分探索木', '木構造', '中間順'],
+  }),
+  createV180Seed({
+    id: 'ap-original-am-basic-theory-q012', questionNumber: 12, field: FIELDS.basicTheory, subField: 'オートマトン',
+    questionText: '有限オートマトンの状態遷移を決めるために必要な情報の組合せはどれか。',
+    choices: ['現在の状態と入力記号', '過去の全入力列と実行時間', '主記憶容量とCPUクロック', '出力装置の種類と通信速度'], correctAnswer: 'ア',
+    choiceReasons: ['有限オートマトンでは、遷移関数が現在の状態と入力記号から次の状態を決定します。', '有限個の状態に必要な情報を集約するので、過去の全入力列を保持することは前提ではありません。', 'ハードウェア性能は状態遷移規則を定義する情報ではありません。', '周辺機器や通信性能は形式言語を認識する状態遷移とは無関係です。'],
+    points: ['有限オートマトンは有限個の状態、入力記号、遷移関数などで表現する。'], keywords: ['有限オートマトン', '状態遷移', '形式言語'],
+  }),
+  createV180Seed({
+    id: 'ap-original-am-basic-theory-q013', questionNumber: 13, field: FIELDS.basicTheory, subField: 'ソート',
+    questionText: '安定なソートアルゴリズムの説明として、適切なものはどれか。',
+    choices: ['同じキーをもつ要素同士の元の順序が、整列後も保たれる', '入力順にかかわらず必ずO(n)で整列できる', '追加の記憶領域を一切使用しない', '要素数が同じなら比較回数が常に同じになる'], correctAnswer: 'ア',
+    choiceReasons: ['安定性とは、比較キーが等しい要素の相対的な順序を維持する性質です。', '安定性は時間計算量をO(n)に保証する性質ではありません。', '安定なアルゴリズムでも追加領域を使う場合があり、安定性と領域計算量は別です。', '比較回数の一定性ではなく、同一キーの相対順序に関する性質です。'],
+    points: ['複数キーで段階的に整列するとき、安定性が重要になる。'], keywords: ['安定ソート', '相対順序', '整列'],
+  }),
+  createV180Seed({
+    id: 'ap-original-am-computer-systems-q011', questionNumber: 11, field: FIELDS.computerSystems, subField: '仮想化',
+    questionText: '一台の物理サーバ上で複数の仮想マシンを動作させるハイパーバイザの主な役割はどれか。',
+    choices: ['CPUやメモリなどの物理資源を仮想マシンへ分配し、相互に隔離する', '全ての仮想マシンで同じIPアドレスを強制的に共有する', 'アプリケーションのソースコードを自動生成する', 'データベースの表を第3正規形へ変換する'], correctAnswer: 'ア',
+    choiceReasons: ['ハイパーバイザは物理資源を抽象化・配分し、複数の仮想マシンを独立して実行させます。', '仮想マシンごとにネットワーク設定を持てるため、同一IPの強制共有が役割ではありません。', 'ソースコード生成は開発支援ツールの役割です。', '表の正規化はデータベース設計で行う作業です。'],
+    points: ['仮想化では資源利用率の向上と環境の分離を両立できる。'], keywords: ['仮想化', 'ハイパーバイザ', '資源分配'],
+  }),
+  createV180Seed({
+    id: 'ap-original-am-database-q007', questionNumber: 7, field: FIELDS.database, subField: '正規化',
+    questionText: '受注明細表に「受注番号、商品番号、商品名、数量」があり、商品名が商品番号だけで決まる。更新時の不整合を減らすための分解として適切なものはどれか。',
+    choices: ['受注明細（受注番号、商品番号、数量）と商品（商品番号、商品名）に分ける', '受注明細から商品番号を削除する', '商品名を受注番号だけで管理する', '全ての列を一つの文字列に結合する'], correctAnswer: 'ア',
+    choiceReasons: ['商品番号から決まる商品名を商品表へ分離し、受注明細から推移的・部分的な重複を除けます。', '商品を識別できなくなり、明細と商品情報を関連付けられません。', '商品名は受注ではなく商品番号に従属するため、依存関係を誤っています。', '列を結合すると検索や更新が難しくなり、正規化の目的に反します。'],
+    points: ['関数従属性を確認し、異なる実体の属性を別表に分ける。'], keywords: ['正規化', '関数従属性', '更新異常'],
+  }),
+  createV180Seed({
+    id: 'ap-original-am-database-q008', questionNumber: 8, field: FIELDS.database, subField: '外部キー',
+    questionText: '外部キー制約の主な目的はどれか。',
+    choices: ['参照先に存在しないキー値の登録を防ぎ、表間の参照整合性を保つ', '列の値を必ず暗号化する', '検索結果を常に一行に制限する', '全ての表に同じ主キー名を強制する'], correctAnswer: 'ア',
+    choiceReasons: ['外部キーは参照先の主キーなどとの対応を検査し、孤立した参照を防ぎます。', '暗号化は機密性を保つ技術で、外部キー制約の機能ではありません。', '返却行数はSQLの条件や制限句で制御します。', '列名の統一ではなく、参照値の存在を保証する制約です。'],
+    points: ['削除・更新時の動作にはRESTRICTやCASCADEなどを設計する。'], keywords: ['外部キー', '参照整合性', '制約'],
+  }),
+  createV180Seed({
+    id: 'ap-original-am-database-q009', questionNumber: 9, field: FIELDS.database, subField: 'SQL',
+    questionText: '部門ごとの従業員数を求め、人数が10人以上の部門だけを抽出するSQLで、集計結果に条件を指定する句はどれか。',
+    choices: ['WHERE句', 'HAVING句', 'ORDER BY句', 'VALUES句'], correctAnswer: 'イ',
+    choiceReasons: ['WHERE句はグループ化前の各行を絞り込むため、集計値への条件指定には直接使いません。', 'HAVING句はGROUP BYで得たグループに対し、COUNTなどの集計結果を条件に絞り込みます。', 'ORDER BY句は結果の並び順を指定する句です。', 'VALUES句は行値を構成するために使われ、集計結果の絞込みではありません。'],
+    points: ['行への条件はWHERE、グループへの条件はHAVINGを使い分ける。'], keywords: ['SQL', 'HAVING', 'GROUP BY'],
+  }),
+  createV180Seed({
+    id: 'ap-original-am-database-q010', questionNumber: 10, field: FIELDS.database, subField: 'ビュー',
+    questionText: 'データベースのビューを利用する利点として、最も適切なものはどれか。',
+    choices: ['利用者ごとに必要な列や行だけを見せ、複雑な問合せを隠蔽できる', '元表を削除しても全データを必ず保持できる', 'どのビューも独立した物理コピーを常に保持する', 'ビューを作るだけで全ての検索が必ず高速化する'], correctAnswer: 'ア',
+    choiceReasons: ['ビューは問合せで定義する仮想表として、表示範囲の制御や問合せの単純化に利用できます。', '通常のビューは元表に依存するため、元表削除後のデータ保持を保証しません。', '通常のビューは定義を保持し、常に物理コピーを持つわけではありません。', '性能は問合せや索引などに依存し、ビュー作成だけで必ず高速化するとは限りません。'],
+    points: ['ビューは論理データ独立性やアクセス制御にも役立つ。'], keywords: ['ビュー', '仮想表', 'アクセス制御'],
+  }),
+  createV180Seed({
+    id: 'ap-original-am-database-q011', questionNumber: 11, field: FIELDS.database, subField: 'デッドロック',
+    questionText: '二つのトランザクションが互いに相手の保持するロックの解放を待ち続けている。この状態への対処として適切なものはどれか。',
+    choices: ['一方のトランザクションをロールバックしてロックを解放する', '両方のロック保持時間を無期限に延長する', '全ての制約を削除する', 'ログを記録せずに処理を継続する'], correctAnswer: 'ア',
+    choiceReasons: ['待ち状態の循環を断つため、一方を犠牲にしてロールバックし、資源を解放します。', '待機を延長しても循環待ちは解消せず、処理が進みません。', '整合性制約の削除はロックの循環待ちへの対処ではありません。', 'ログを省略すると回復性を損ない、デッドロックも解消しません。'],
+    points: ['ロック取得順序の統一やタイムアウトはデッドロックの予防・検出に使える。'], keywords: ['デッドロック', '排他制御', 'ロールバック'],
+  }),
+  createV180Seed({
+    id: 'ap-original-am-database-q012', questionNumber: 12, field: FIELDS.database, subField: 'インデックス',
+    questionText: '検索条件に頻繁に使われる列へインデックスを追加するときの一般的なトレードオフはどれか。',
+    choices: ['検索が速くなる可能性がある一方、更新時の索引保守コストと記憶領域が増える', '検索と更新の両方が必ず無条件に高速化する', '表の行データが自動的に暗号化される', '外部キー制約が不要になる'], correctAnswer: 'ア',
+    choiceReasons: ['インデックスは探索範囲を狭めますが、追加・更新・削除のたびに索引更新が必要です。', '更新時には索引保守が発生するため、全処理が必ず高速化するわけではありません。', '索引は検索構造であり、行データの暗号化機能ではありません。', '索引と参照整合性を保つ外部キー制約は目的が異なります。'],
+    points: ['選択性が低い列や更新頻度が高い表では効果とコストを評価する。'], keywords: ['インデックス', '検索性能', '更新コスト'],
+  }),
+  createV180Seed({
+    id: 'ap-original-am-database-q013', questionNumber: 13, field: FIELDS.database, subField: 'ER図',
+    questionText: 'ER図で、従業員と所属部門の間に「各従業員は一つの部門に所属し、一つの部門には複数の従業員が所属できる」という関係を表す多重度はどれか。',
+    choices: ['従業員1対部門1', '従業員多対部門1', '従業員多対部門多', '従業員0対部門0'], correctAnswer: 'イ',
+    choiceReasons: ['一部門に複数従業員が所属できるので、従業員側が常に1とはなりません。', '複数の従業員から一つの部門を参照する多対1の関係です。', '各従業員の所属先が一つという条件なので、多対多ではありません。', '実体間に所属関係があるため、双方0という表現は不適切です。'],
+    points: ['多重度は一方の実体一件に対して他方が何件対応できるかを読む。'], keywords: ['ER図', '多重度', 'リレーションシップ'],
+  }),
+  createV180Seed({
+    id: 'ap-original-am-network-q007', questionNumber: 7, field: FIELDS.network, subField: 'UDP',
+    questionText: 'リアルタイム音声配信でUDPが選ばれる理由として、適切なものはどれか。',
+    choices: ['再送や順序制御を必須とせず、遅延を抑えた送信に向く', '通信前に必ず三者間ハンドシェイクを行う', 'パケット到着と順序をプロトコルが完全に保証する', '宛先ポート番号を使用しない'], correctAnswer: 'ア',
+    choiceReasons: ['UDPはコネクション確立や再送制御の負荷が小さく、多少の欠落より低遅延を優先する用途に向きます。', '三者間ハンドシェイクはTCPのコネクション確立手順です。', '到着保証や順序制御はUDP自身にはなく、必要ならアプリケーション側で補います。', 'UDPもアプリケーションを識別するためにポート番号を使用します。'],
+    points: ['UDPは低遅延、TCPは信頼性を重視する代表的な選択肢である。'], keywords: ['UDP', 'リアルタイム通信', '低遅延'],
+  }),
+  createV180Seed({
+    id: 'ap-original-am-network-q008', questionNumber: 8, field: FIELDS.network, subField: 'DHCP',
+    questionText: 'DHCPサーバの主な役割はどれか。',
+    choices: ['端末へIPアドレスやデフォルトゲートウェイなどを自動設定する', 'ドメイン名をIPアドレスへ変換する', '電子メール本文を暗号化する', 'Webページの内容をキャッシュする'], correctAnswer: 'ア',
+    choiceReasons: ['DHCPは端末へIPアドレス、サブネットマスク、ゲートウェイなどをリースします。', '名前解決はDNSの役割です。', 'メール暗号化はS/MIMEなどの仕組みで行います。', 'WebキャッシュはプロキシやCDNなどが担います。'],
+    points: ['DHCPではDISCOVER、OFFER、REQUEST、ACKの流れが代表的である。'], keywords: ['DHCP', 'IPアドレス', '自動設定'],
+  }),
+  createV180Seed({
+    id: 'ap-original-am-network-q009', questionNumber: 9, field: FIELDS.network, subField: 'NAT',
+    questionText: 'プライベートIPアドレスを使用する複数端末が、一つのグローバルIPアドレスを共有してインターネットへ接続するために用いる技術はどれか。',
+    choices: ['NAPT', 'ARP', 'ICMP', 'SNMP'], correctAnswer: 'ア',
+    choiceReasons: ['NAPTはIPアドレスに加えてポート番号も変換し、複数通信を一つのグローバルIPで識別します。', 'ARPは同一ネットワーク内でIPアドレスからMACアドレスを求めます。', 'ICMPはエラー通知や疎通確認などに用います。', 'SNMPはネットワーク機器の監視・管理に用います。'],
+    points: ['NAPTはIPマスカレードとも呼ばれ、ポート番号で通信を多重化する。'], keywords: ['NAPT', 'NAT', 'プライベートIP'],
+  }),
+  createV180Seed({
+    id: 'ap-original-am-network-q010', questionNumber: 10, field: FIELDS.network, subField: 'VLAN',
+    questionText: '一台のレイヤ2スイッチに接続された端末を、物理配線を変えずに異なるブロードキャストドメインへ分割する技術はどれか。',
+    choices: ['VLAN', 'NTP', 'FTP', 'PPP'], correctAnswer: 'ア',
+    choiceReasons: ['VLANはスイッチポートなどを論理グループ化し、ブロードキャスト範囲を分離します。', 'NTPはネットワーク経由で時刻を同期するプロトコルです。', 'FTPはファイル転送用のアプリケーションプロトコルです。', 'PPPは主に一対一のデータリンクで使うプロトコルです。'],
+    points: ['異なるVLAN間の通信にはルータ又はレイヤ3スイッチが必要になる。'], keywords: ['VLAN', 'ブロードキャストドメイン', 'レイヤ2'],
+  }),
+  createV180Seed({
+    id: 'ap-original-am-network-q011', questionNumber: 11, field: FIELDS.network, subField: 'サブネット',
+    questionText: 'IPv4ネットワーク 192.0.2.0/27 で、ネットワークアドレスとブロードキャストアドレスを除いて利用できるホストアドレス数は幾つか。',
+    choices: ['14', '30', '32', '62'], correctAnswer: 'イ',
+    choiceReasons: ['14は/28のサブネットで利用可能なホスト数です。', 'ホスト部は5ビットなので2の5乗個あり、予約済みの2個を除くと30個です。', '32はアドレス総数で、ネットワークとブロードキャストには割り当てられません。', '62は/26のサブネットで利用可能なホスト数です。'],
+    points: ['/27のホスト部は32−27＝5ビットである。'], keywords: ['IPv4', 'CIDR', 'サブネット'],
+  }),
+  createV180Seed({
+    id: 'ap-original-am-network-q012', questionNumber: 12, field: FIELDS.network, subField: '電子メール',
+    questionText: '受信メールをサーバ上で管理し、複数端末から同じメールボックスを同期して利用するのに適したプロトコルはどれか。',
+    choices: ['SMTP', 'POP3', 'IMAP4', 'DHCP'], correctAnswer: 'ウ',
+    choiceReasons: ['SMTPは主にメールの送信やメールサーバ間の転送に使います。', 'POP3は受信に使えますが、一般に端末へダウンロードする単純な利用形態向けです。', 'IMAP4はサーバ上のフォルダや既読状態を管理し、複数端末で同期しやすいプロトコルです。', 'DHCPはネットワーク設定を端末へ配布するプロトコルです。'],
+    points: ['送信はSMTP、複数端末での受信管理はIMAP4が代表的である。'], keywords: ['IMAP4', 'SMTP', '電子メール'],
+  }),
+  createV180Seed({
+    id: 'ap-original-am-network-q013', questionNumber: 13, field: FIELDS.network, subField: '負荷分散',
+    questionText: 'Webサービスのロードバランサが行う処理として、最も適切なものはどれか。',
+    choices: ['受信した要求を複数のサーバへ振り分け、負荷集中を緩和する', '全ての利用者パスワードを平文で保存する', 'データベースの正規化を自動で解除する', 'DNSのルートサーバを組織内だけで置き換える'], correctAnswer: 'ア',
+    choiceReasons: ['ロードバランサは要求を複数サーバへ分配し、性能や可用性の向上に寄与します。', 'パスワードの平文保存は重大なセキュリティ問題で、負荷分散とは無関係です。', 'データモデルの正規化はデータベース設計上の作業です。', '公開DNS全体のルートを組織内で置換する機能ではありません。'],
+    points: ['ヘルスチェックによって異常なサーバを振分け先から外せる。'], keywords: ['ロードバランサ', '負荷分散', 'ヘルスチェック'],
+  }),
+  createV180Seed({
+    id: 'ap-original-am-security-q008', questionNumber: 8, field: FIELDS.security, subField: '認証と認可',
+    questionText: '情報システムにおける認証と認可の関係として、適切なものはどれか。',
+    choices: ['認証で利用者を確認し、認可でその利用者に許された操作を判定する', '認可で本人確認を行い、認証でアクセス権を付与する', '認証と認可はどちらもデータ圧縮だけを行う', '認証に成功した利用者には常に全権限を与える'], correctAnswer: 'ア',
+    choiceReasons: ['認証は主体が誰かを確かめ、認可は確認済み主体が資源へ何を行えるかを制御します。', '本人確認と権限制御の役割が逆になっています。', 'どちらもアクセス制御に関する概念で、データ圧縮ではありません。', '認証成功後も最小権限に基づく認可が必要です。'],
+    points: ['認証と認可を分けて設計し、必要最小限の権限を与える。'], keywords: ['認証', '認可', '最小権限'],
+  }),
+  createV180Seed({
+    id: 'ap-original-am-security-q009', questionNumber: 9, field: FIELDS.security, subField: '多要素認証',
+    questionText: 'パスワードとスマートフォンの認証アプリを組み合わせる方式が多要素認証となる理由はどれか。',
+    choices: ['知識要素と所持要素という異なる種類の要素を組み合わせるから', '二つとも同じパスワードを入力する方式だから', '利用者名を二回入力するから', '認証後に全権限を付与するから'], correctAnswer: 'ア',
+    choiceReasons: ['パスワードは知識要素、認証アプリを保持する端末は所持要素で、異なる要素を組み合わせています。', '同一種類の秘密を二回使うだけでは、異なる要素を使う多要素認証になりません。', '利用者名は通常秘密情報ではなく、二回入力しても要素は増えません。', '権限付与は認可の問題であり、多要素認証の成立条件ではありません。'],
+    points: ['要素には知識・所持・生体などがあり、異なる種類を組み合わせる。'], keywords: ['多要素認証', '知識要素', '所持要素'],
+  }),
+  createV180Seed({
+    id: 'ap-original-am-security-q010', questionNumber: 10, field: FIELDS.security, subField: 'デジタル署名',
+    questionText: '送信者がメッセージのハッシュ値に自分の秘密鍵で署名し、受信者が検証することで確認できるものはどれか。',
+    choices: ['改ざんの有無と署名者の真正性', '通信内容を第三者が読めないことだけ', '受信者の端末がマルウェアに感染していないこと', 'ネットワーク遅延が一定であること'], correctAnswer: 'ア',
+    choiceReasons: ['公開鍵で署名を検証し、ハッシュ値を比較することで完全性と署名者の真正性を確認できます。', 'デジタル署名自体は内容の秘匿を目的とせず、機密性には暗号化が必要です。', '端末のマルウェア感染有無を判定する仕組みではありません。', '通信品質や遅延を保証する技術ではありません。'],
+    points: ['署名は送信者の秘密鍵で生成し、対応する公開鍵で検証する。'], keywords: ['デジタル署名', 'ハッシュ', '真正性'],
+  }),
+  createV180Seed({
+    id: 'ap-original-am-security-q011', questionNumber: 11, field: FIELDS.security, subField: 'TLS',
+    questionText: 'WebブラウザがTLSサーバ証明書を検証する主な目的はどれか。',
+    choices: ['接続先サーバの公開鍵とドメイン名の対応を信頼できる認証局の連鎖で確認する', 'Webページの文章が著作権侵害でないと保証する', 'サーバの処理性能が十分であると測定する', '利用者の全操作を匿名化する'], correctAnswer: 'ア',
+    choiceReasons: ['証明書の署名、有効期限、ホスト名などを検証し、意図した接続先であることを確認します。', '証明書はコンテンツの著作権適法性を審査するものではありません。', 'サーバ性能は負荷試験や監視で評価し、証明書検証の対象ではありません。', 'TLSは通信を保護しますが、利用者の全操作の匿名性を保証しません。'],
+    points: ['証明書検証を省略すると中間者攻撃を受ける危険が高まる。'], keywords: ['TLS', 'サーバ証明書', '認証局'],
+  }),
+  createV180Seed({
+    id: 'ap-original-am-security-q012', questionNumber: 12, field: FIELDS.security, subField: 'CSRF',
+    questionText: 'CSRF対策として、状態を変更するHTTP要求に推測困難なトークンを含め、サーバ側でセッションと対応を検証する目的はどれか。',
+    choices: ['正規サイトから生成された要求かを確認し、第三者サイトからの不正操作を防ぐ', '入力文字列をSQLとして実行できるようにする', '通信内容を圧縮して帯域を節約する', '利用者のパスワードをURLへ埋め込む'], correctAnswer: 'ア',
+    choiceReasons: ['セッションに結び付いたCSRFトークンを検証し、攻撃者が作った外部ページからの要求を拒否します。', 'SQL実行を許すことはSQLインジェクションを招き、対策と逆です。', 'トークンの目的は要求元の正当性確認で、圧縮ではありません。', '秘密情報をURLへ含めると漏えいしやすく、安全な対策ではありません。'],
+    points: ['SameSite CookieもCSRFリスク低減に利用できるが、処理に応じて多層防御する。'], keywords: ['CSRF', 'トークン', 'SameSite'],
+  }),
+  createV180Seed({
+    id: 'ap-original-am-security-q013', questionNumber: 13, field: FIELDS.security, subField: 'ゼロトラスト',
+    questionText: 'ゼロトラストの考え方に沿ったアクセス制御はどれか。',
+    choices: ['ネットワークの内外だけで信頼を決めず、利用者・端末・状況を継続的に検証する', '社内ネットワークからの通信は全て無条件に許可する', '一度ログインした端末は永久に再評価しない', '共有管理者アカウントを全員で利用する'], correctAnswer: 'ア',
+    choiceReasons: ['場所に基づく暗黙の信頼を置かず、主体や端末状態などを都度評価して最小権限で許可します。', '内部であっても侵害を前提に検証するため、無条件許可は考え方に反します。', 'リスクや端末状態は変化するので、継続的な評価が必要です。', '共有アカウントは追跡性を損ない、主体ごとの検証と最小権限に反します。'],
+    points: ['Verify explicitly、最小権限、侵害前提が重要な原則である。'], keywords: ['ゼロトラスト', '継続的検証', '最小権限'],
+  }),
+  createV180Seed({
+    id: 'ap-original-am-security-q014', questionNumber: 14, field: FIELDS.security, subField: 'リスクアセスメント',
+    questionText: '情報セキュリティのリスク対応を決める前に、資産・脅威・脆弱性と発生可能性、影響度を分析する活動はどれか。',
+    choices: ['リスクアセスメント', '負荷テスト', 'コード整形', 'データ圧縮'], correctAnswer: 'ア',
+    choiceReasons: ['リスクアセスメントはリスクを特定・分析・評価し、対応の優先順位付けに必要な情報を得ます。', '負荷テストは高負荷時の性能や安定性を確認する試験です。', 'コード整形は可読性や形式をそろえる開発作業です。', 'データ圧縮は情報量を減らす技術で、リスク評価ではありません。'],
+    points: ['評価後は回避・低減・移転・保有などの対応を選択する。'], keywords: ['リスクアセスメント', '脅威', '脆弱性'],
+  }),
+  createV180Seed({
+    id: 'ap-original-am-system-development-q008', questionNumber: 8, field: FIELDS.systemDevelopment, subField: '外部設計',
+    questionText: '外部設計で主に定義する内容はどれか。',
+    choices: ['利用者から見える画面、帳票、外部インタフェースなど', '各モジュール内部の具体的なアルゴリズムだけ', 'CPU内部の命令デコーダ回路', '監査人の独立性に関する契約だけ'], correctAnswer: 'ア',
+    choiceReasons: ['外部設計では要件を基に、利用者や外部システムから見える仕様を具体化します。', 'モジュール内部の処理方式は主に内部設計で詳細化します。', 'CPU回路の設計は情報システムの外部設計ではありません。', '監査契約の内容はシステム外部設計の成果物ではありません。'],
+    points: ['外部設計は利用者視点、内部設計は実装者視点の仕様を扱う。'], keywords: ['外部設計', '画面設計', 'インタフェース'],
+  }),
+  createV180Seed({
+    id: 'ap-original-am-system-development-q009', questionNumber: 9, field: FIELDS.systemDevelopment, subField: '単体テスト',
+    questionText: '単体テストの目的として、最も適切なものはどれか。',
+    choices: ['個々のモジュールやクラスが詳細設計どおり動作するか確認する', '本番稼働後の投資効果だけを測定する', '組織全体の内部統制を監査する', '複数企業間の契約条件を決定する'], correctAnswer: 'ア',
+    choiceReasons: ['単体テストでは小さなプログラム単位の入力、処理、出力や境界条件を検証します。', '投資効果の測定はシステム評価や経営管理の活動です。', '内部統制の評価はシステム監査などで行います。', '契約条件の決定は調達・契約管理の活動です。'],
+    points: ['単体テストではスタブやドライバを用いることがある。'], keywords: ['単体テスト', 'モジュール', 'スタブ'],
+  }),
+  createV180Seed({
+    id: 'ap-original-am-system-development-q010', questionNumber: 10, field: FIELDS.systemDevelopment, subField: '結合テスト',
+    questionText: '結合テストで重点的に確認する対象はどれか。',
+    choices: ['モジュール間のインタフェースやデータ受渡し', '一つの関数内の全ての命令だけ', '経営戦略と市場環境の適合性だけ', '建物の耐震性能だけ'], correctAnswer: 'ア',
+    choiceReasons: ['結合した構成要素間で呼出し、データ形式、制御の受渡しが正しいかを確認します。', '一関数内部の詳細な確認は主に単体テストの対象です。', '市場との適合性は経営戦略の評価であり、結合テストではありません。', '建物の耐震性能はソフトウェア結合テストの対象外です。'],
+    points: ['トップダウン、ボトムアップ、ビッグバンなどの結合方式がある。'], keywords: ['結合テスト', 'インタフェース', 'データ受渡し'],
+  }),
+  createV180Seed({
+    id: 'ap-original-am-system-development-q011', questionNumber: 11, field: FIELDS.systemDevelopment, subField: 'アジャイル',
+    questionText: '短い反復ごとに動作するソフトウェアを作り、利用者のフィードバックを次の計画へ反映する開発の特徴はどれか。',
+    choices: ['反復型のアジャイル開発', '全要件を固定し変更を禁止する方式', 'テストを本番稼働後まで行わない方式', '設計情報を全く共有しない方式'], correctAnswer: 'ア',
+    choiceReasons: ['短いイテレーションで価値を届け、変化や学習をバックログへ反映するのが代表的な特徴です。', 'アジャイルは変化への適応を重視し、全変更の禁止を原則としません。', '各反復で品質を確認するため、テストを稼働後まで延期しません。', '協働と透明性を重視するため、情報を全く共有しない方式ではありません。'],
+    points: ['小さな単位で検査と適応を繰り返し、リスクを早期に発見する。'], keywords: ['アジャイル', 'イテレーション', 'フィードバック'],
+  }),
+  createV180Seed({
+    id: 'ap-original-am-system-development-q012', questionNumber: 12, field: FIELDS.systemDevelopment, subField: 'CI/CD',
+    questionText: '継続的インテグレーション（CI）の実践として、適切なものはどれか。',
+    choices: ['変更を頻繁に共有リポジトリへ統合し、自動ビルドとテストで早期に問題を検出する', '全変更をリリース直前まで各自の端末だけに保持する', 'テスト失敗を無視して常に本番へ配備する', 'ソースコードの版管理を行わない'], correctAnswer: 'ア',
+    choiceReasons: ['小さな変更を継続的に統合し、自動検証することで統合不具合を早く見つけます。', '長期間分岐した変更を最後にまとめると、競合や不具合の発見が遅れます。', 'CIは品質ゲートを重視し、失敗を無視した配備を推奨しません。', '共有と再現性のために版管理は重要な基盤です。'],
+    points: ['CDは継続的デリバリ又は継続的デプロイを指し、CIの先に配備工程を自動化する。'], keywords: ['CI/CD', '自動テスト', '継続的インテグレーション'],
+  }),
+  createV180Seed({
+    id: 'ap-original-am-system-development-q013', questionNumber: 13, field: FIELDS.systemDevelopment, subField: 'UML',
+    questionText: 'UMLのシーケンス図が表すものはどれか。',
+    choices: ['オブジェクト間で時間順に行われるメッセージのやり取り', 'データベース表の物理配置だけ', 'プロジェクト費用の時系列推移だけ', 'ネットワークケーブルの配線長だけ'], correctAnswer: 'ア',
+    choiceReasons: ['シーケンス図はライフラインとメッセージを用い、相互作用を時間の流れに沿って表します。', '表の構造や関係はER図などで表し、シーケンス図の主目的ではありません。', '費用推移はEVMのグラフなどで管理します。', '物理配線はネットワーク構成図などで表します。'],
+    points: ['相互作用図にはシーケンス図やコミュニケーション図がある。'], keywords: ['UML', 'シーケンス図', '相互作用'],
+  }),
+  createV180Seed({
+    id: 'ap-original-am-project-management-q002', questionNumber: 2, field: FIELDS.projectManagement, subField: 'WBS',
+    questionText: 'WBSを作成する主な目的はどれか。',
+    choices: ['プロジェクトの成果物と作業を管理可能な単位へ階層的に分解する', '組織の全パスワードを一つに統合する', 'データベースの排他制御を解除する', '通信パケットを暗号化する'], correctAnswer: 'ア',
+    choiceReasons: ['WBSはスコープを作業パッケージまで分解し、見積りや担当割当ての基礎にします。', '認証情報の統合はWBSの目的ではなく、共有パスワードは危険です。', '排他制御はデータベースの同時実行制御です。', '通信暗号化はTLSなどが担うセキュリティ機能です。'],
+    points: ['WBSは100%ルールを意識し、必要な作業の漏れや重複を減らす。'], keywords: ['WBS', '作業分解', 'スコープ'],
+  }),
+  createV180Seed({
+    id: 'ap-original-am-project-management-q003', questionNumber: 3, field: FIELDS.projectManagement, subField: 'EVM',
+    questionText: 'ある時点でPV=100万円、EV=80万円、AC=90万円である。コスト差異CVとスケジュール差異SVの組合せはどれか。',
+    choices: ['CV=-10万円、SV=-20万円', 'CV=10万円、SV=20万円', 'CV=-20万円、SV=-10万円', 'CV=20万円、SV=10万円'], correctAnswer: 'ア',
+    choiceReasons: ['CV=EV−AC=80−90=-10万円、SV=EV−PV=80−100=-20万円です。', '差異の符号を逆にしており、実績は予算超過かつ進捗遅延です。', 'CVとSVに用いる比較対象を取り違えています。', '計算式と符号の両方が誤っています。'],
+    points: ['CVが負なら予算超過、SVが負なら計画より遅れている。'], keywords: ['EVM', 'コスト差異', 'スケジュール差異'],
+  }),
+  createV180Seed({
+    id: 'ap-original-am-project-management-q004', questionNumber: 4, field: FIELDS.projectManagement, subField: 'リスク管理',
+    questionText: '発生確率は低いが影響が非常に大きいリスクについて、損害を第三者へ移す対応例はどれか。',
+    choices: ['保険へ加入する', '発生確率と影響を記録せず無視する', '原因となる作業を追加して影響を拡大する', '全ての品質確認を中止する'], correctAnswer: 'ア',
+    choiceReasons: ['保険契約は金銭的影響の一部を保険会社へ移転する代表的なリスク移転です。', '認識したリスクを無評価で無視することは適切な管理ではありません。', '影響を拡大する行為はリスク対応になりません。', '品質確認の中止は別のリスクを増やします。'],
+    points: ['リスク対応には回避、軽減、移転、受容などがある。'], keywords: ['リスク管理', 'リスク移転', '保険'],
+  }),
+  createV180Seed({
+    id: 'ap-original-am-project-management-q005', questionNumber: 5, field: FIELDS.projectManagement, subField: '見積り',
+    questionText: '過去の類似プロジェクトの実績値を基に、新しいプロジェクトの期間や費用を概算する手法はどれか。',
+    choices: ['類推見積り', 'モンキーテスト', '正規化', 'パケットフィルタリング'], correctAnswer: 'ア',
+    choiceReasons: ['類推見積りは類似案件の実績と差異を基に、早い段階で概算します。', 'モンキーテストは無作為な操作などで不具合を探すテストです。', '正規化はデータベース設計の手法です。', 'パケットフィルタリングは通信を条件で制御する技術です。'],
+    points: ['類推見積りは迅速だが、類似性や補正根拠を確認する必要がある。'], keywords: ['類推見積り', '見積り', '類似プロジェクト'],
+  }),
+  createV180Seed({
+    id: 'ap-original-am-project-management-q006', questionNumber: 6, field: FIELDS.projectManagement, subField: '品質管理',
+    questionText: '成果物を作成した本人以外のメンバーが、定めた観点に沿って欠陥を早期発見する活動はどれか。',
+    choices: ['レビュー', 'リスク受容', '調達終了', 'DNSキャッシュ'], correctAnswer: 'ア',
+    choiceReasons: ['レビューは成果物を複数の視点で確認し、後工程へ流出する前に欠陥を除去します。', 'リスク受容はリスクを認識した上で対応費用などを考慮して保有する判断です。', '調達終了は契約完了を扱うプロセスで、成果物の欠陥発見活動そのものではありません。', 'DNSキャッシュは名前解決結果を一時保存する仕組みです。'],
+    points: ['チェックリストや役割を定めると、レビューの再現性を高められる。'], keywords: ['レビュー', '品質管理', '欠陥予防'],
+  }),
+  createV180Seed({
+    id: 'ap-original-am-project-management-q007', questionNumber: 7, field: FIELDS.projectManagement, subField: 'ステークホルダ管理',
+    questionText: 'プロジェクト開始時にステークホルダを特定し、関心度と影響力を分析する主な目的はどれか。',
+    choices: ['適切な情報提供や関与の方法を計画する', '全員へ同じ機密情報を無条件に公開する', '要求変更を一切記録しない', '進捗測定を不要にする'], correctAnswer: 'ア',
+    choiceReasons: ['立場や期待、影響力に応じたコミュニケーションとエンゲージメントを計画できます。', '情報は必要性と権限に応じて扱い、無条件公開は適切ではありません。', '変更は影響を評価し、管理された手順で記録します。', '関係者分析をしても進捗測定は引き続き必要です。'],
+    points: ['ステークホルダの期待や影響力はプロジェクト中にも変化するため再評価する。'], keywords: ['ステークホルダ', '関心度', '影響力'],
+  }),
+  createV180Seed({
+    id: 'ap-original-am-project-management-q008', questionNumber: 8, field: FIELDS.projectManagement, subField: '変更管理',
+    questionText: '承認済みのスコープに変更要求が提出されたとき、最初に行うべき対応として適切なものはどれか。',
+    choices: ['期間・費用・品質・リスクへの影響を分析し、変更管理手順に従って判断を求める', '承認を待たず直ちに全て実装する', '要求を記録せず口頭だけで処理する', '既存の計画と履歴を削除する'], correctAnswer: 'ア',
+    choiceReasons: ['変更の影響を可視化し、権限をもつ会議体などで承認・却下を判断します。', '無承認の実装はスコープや費用を統制できなくします。', '記録がないと判断根拠や追跡性が失われます。', '基準計画と履歴は影響比較や監査のため保持します。'],
+    points: ['承認された変更は基準計画や関連文書へ反映する。'], keywords: ['変更管理', '影響分析', '変更要求'],
+  }),
+  createV180Seed({
+    id: 'ap-original-am-project-management-q009', questionNumber: 9, field: FIELDS.projectManagement, subField: 'コミュニケーション',
+    questionText: '遠隔地のチーム間で仕様認識のずれが増えている。改善策として最も適切なものはどれか。',
+    choices: ['用語、決定事項、担当、期限を共有文書に記録し、定期的に同期する', '連絡経路をなくして各自の推測に任せる', '会議の決定事項を参加者にも非公開にする', '全ての質問への回答をリリース後まで延期する'], correctAnswer: 'ア',
+    choiceReasons: ['共通の情報源と定期的な対話を設けることで、認識差を早期に発見・解消できます。', '連絡をなくすと認識差と手戻りが拡大します。', '決定事項を共有しなければ、関係者が同じ前提で作業できません。', '疑問の解消を遅らせると誤った実装が進む危険があります。'],
+    points: ['コミュニケーション計画では対象者、内容、頻度、媒体、責任者を定める。'], keywords: ['コミュニケーション管理', '共有文書', '合意形成'],
+  }),
+  createV180Seed({
+    id: 'ap-original-am-project-management-q010', questionNumber: 10, field: FIELDS.projectManagement, subField: '資源平準化',
+    questionText: '同じ担当者に複数作業が同時期に集中し、実行不可能な計画になっている。資源平準化の説明として適切なものはどれか。',
+    choices: ['資源制約を考慮して作業時期を調整し、負荷の集中を解消する', '全作業の所要時間を根拠なくゼロにする', '担当者数にかかわらず全作業を同時開始する', '品質基準を削除して負荷を隠す'], correctAnswer: 'ア',
+    choiceReasons: ['利用可能な資源量に合わせて開始・終了時期を調整し、現実的な計画にします。', '作業時間をゼロにするのは見積りの改ざんで、平準化ではありません。', '資源競合を無視した同時開始は問題を悪化させます。', '品質基準の削除は負荷調整ではなく品質リスクを増やします。'],
+    points: ['資源平準化によってクリティカルパスや完了日が変わることがある。'], keywords: ['資源平準化', '要員計画', 'スケジュール'],
+  }),
+  createV180Seed({
+    id: 'ap-original-am-project-management-q011', questionNumber: 11, field: FIELDS.projectManagement, subField: '完了管理',
+    questionText: 'プロジェクト完了時に教訓を整理して組織の資産として残す目的はどれか。',
+    choices: ['成功要因と失敗要因を将来のプロジェクトで再利用する', '問題を隠して同じ失敗を繰り返す', '成果物の検収を不要にする', '契約上の義務を自動的に無効にする'], correctAnswer: 'ア',
+    choiceReasons: ['知見を再利用可能な形で記録し、見積りやリスク対応などの改善につなげます。', '問題を隠すと組織学習が進まず、再発防止になりません。', '教訓整理とは別に、成果物の受入れと検収が必要です。', '教訓文書によって契約義務が消えることはありません。'],
+    points: ['教訓は完了時だけでなく、節目ごとに収集すると記憶の劣化を防げる。'], keywords: ['教訓', '組織的学習', 'プロジェクト完了'],
+  }),
+  createV180Seed({
+    id: 'ap-original-am-service-management-q002', questionNumber: 2, field: FIELDS.serviceManagement, subField: 'SLA',
+    questionText: 'SLAで定める指標として適切なものはどれか。',
+    choices: ['サービス稼働率や障害応答時間など、測定可能なサービス目標', '開発者個人の私的な予定だけ', '利用者に知らせない曖昧な努力目標だけ', '全障害が永久に発生しないという保証だけ'], correctAnswer: 'ア',
+    choiceReasons: ['SLAは提供者と顧客が合意した測定可能な品質水準や責任を明確にします。', '個人の私的予定は顧客とのサービス合意の指標ではありません。', '測定不能で非公開の目標では達成状況を評価できません。', '障害ゼロの絶対保証ではなく、現実的で測定可能な水準を合意します。'],
+    points: ['SLAの達成状況は継続的に測定・報告し、改善へつなげる。'], keywords: ['SLA', 'サービスレベル', '可用性'],
+  }),
+  createV180Seed({
+    id: 'ap-original-am-service-management-q003', questionNumber: 3, field: FIELDS.serviceManagement, subField: 'インシデント管理',
+    questionText: 'サービス停止を検知した直後のインシデント管理で、最優先する目標はどれか。',
+    choices: ['事業への影響を抑え、通常サービスをできるだけ早く復旧する', '根本原因が完全に判明するまで復旧を禁止する', '利用者からの問合せを全て削除する', '変更履歴を残さず機器を交換する'], correctAnswer: 'ア',
+    choiceReasons: ['インシデント管理は回避策も活用しながら、サービスを迅速に正常状態へ戻します。', '根本原因分析は問題管理で進められ、復旧を不必要に遅らせるべきではありません。', '問合せ記録は影響把握や追跡に必要です。', '緊急時でも変更と対応の記録を残し、統制を保つ必要があります。'],
+    points: ['復旧と根本原因除去は目的を分け、連携して管理する。'], keywords: ['インシデント管理', 'サービス復旧', '問題管理'],
+  }),
+  createV180Seed({
+    id: 'ap-original-am-service-management-q004', questionNumber: 4, field: FIELDS.serviceManagement, subField: '変更実現',
+    questionText: '本番環境への変更を実施する前に、変更のリスク、影響、実施計画、切戻し手順を評価する目的はどれか。',
+    choices: ['変更による障害を抑え、承認された手順で安全に移行する', '全ての変更を理由なく永久に禁止する', '障害記録を削除する', '利用者への連絡を必ず省略する'], correctAnswer: 'ア',
+    choiceReasons: ['影響とリスクを評価し、承認・試験・切戻しを準備することで変更成功率を高めます。', '価値ある変更も必要なので、全変更の永久禁止は適切ではありません。', '記録削除は追跡性と改善機会を損ないます。', '影響する利用者には適切な時期と内容で周知する必要があります。'],
+    points: ['標準変更、通常変更、緊急変更ではリスクに応じた手順を設計する。'], keywords: ['変更実現', '切戻し', '変更承認'],
+  }),
+  createV180Seed({
+    id: 'ap-original-am-service-management-q005', questionNumber: 5, field: FIELDS.serviceManagement, subField: 'サービスデスク',
+    questionText: 'サービスデスクを単一窓口として設ける主な利点はどれか。',
+    choices: ['利用者からの問合せや障害申告を一元管理し、進捗を追跡できる', '全ての技術担当者への直接連絡を強制する', '申告内容を記録せず毎回破棄する', 'サービス品質の測定を不要にする'], correctAnswer: 'ア',
+    choiceReasons: ['受付、分類、エスカレーション、回答を一元化し、利用者との連絡と対応状況を管理できます。', '窓口を分散させると担当や進捗が不明確になりやすくなります。', '記録は傾向分析、引継ぎ、SLA測定に必要です。', '窓口設置後も品質指標の測定と改善が必要です。'],
+    points: ['サービスデスクは利用者とサービス提供組織を結ぶ窓口である。'], keywords: ['サービスデスク', '単一窓口', 'エスカレーション'],
+  }),
+  createV180Seed({
+    id: 'ap-original-am-service-management-q006', questionNumber: 6, field: FIELDS.serviceManagement, subField: '可用性管理',
+    questionText: '可用性を表す式として適切なものはどれか。',
+    choices: ['稼働時間÷（稼働時間＋停止時間）', '停止時間÷稼働時間だけ', '障害件数×利用者数', '売上高÷固定費'], correctAnswer: 'ア',
+    choiceReasons: ['総サービス時間に占める稼働時間の割合が可用性です。', '停止時間と稼働時間の比だけでは一般的な可用性の定義になりません。', '障害件数と利用者数の積は可用性を表す式ではありません。', '売上高と固定費の比は会計指標で、可用性ではありません。'],
+    points: ['MTBFとMTTRを用いると、可用性はMTBF÷（MTBF＋MTTR）で表せる。'], keywords: ['可用性', '稼働時間', 'MTTR'],
+  }),
+  createV180Seed({
+    id: 'ap-original-am-service-management-q007', questionNumber: 7, field: FIELDS.serviceManagement, subField: 'キャパシティ管理',
+    questionText: '利用者増加に備え、CPU使用率や応答時間の推移を分析して必要な資源を計画する活動はどれか。',
+    choices: ['キャパシティ管理', '知的財産管理', 'ソースコード難読化', '著作権登録'], correctAnswer: 'ア',
+    choiceReasons: ['需要と性能を監視・予測し、費用対効果を考慮して十分な容量を確保します。', '知的財産管理は権利やライセンスを扱う活動です。', '難読化はコード解析を難しくする技術で、資源計画ではありません。', '著作権登録は容量予測と無関係です。'],
+    points: ['事業、サービス、コンポーネントの各観点で将来需要を見積もる。'], keywords: ['キャパシティ管理', '性能監視', '需要予測'],
+  }),
+  createV180Seed({
+    id: 'ap-original-am-service-management-q008', questionNumber: 8, field: FIELDS.serviceManagement, subField: '構成管理',
+    questionText: '構成管理データベースで、サーバ、ソフトウェア、契約、サービス間の関係を管理する目的はどれか。',
+    choices: ['障害や変更の影響範囲を把握し、構成情報の正確性を保つ', '全構成品の所有者を不明にする', '変更の承認を不要にする', 'バックアップを必ず一世代だけにする'], correctAnswer: 'ア',
+    choiceReasons: ['構成アイテムと関係を把握することで、変更・障害の影響分析や統制に活用できます。', '所有者や責任を明確にすることが管理上重要です。', '構成情報は変更管理を支援しますが、承認を不要にはしません。', 'バックアップ世代数は要件やリスクに基づいて決める別の設計事項です。'],
+    points: ['構成情報は実環境と照合し、最新性と正確性を維持する。'], keywords: ['構成管理', '構成アイテム', 'CMDB'],
+  }),
+  createV180Seed({
+    id: 'ap-original-am-service-management-q009', questionNumber: 9, field: FIELDS.serviceManagement, subField: '継続的改善',
+    questionText: 'サービス改善で、現状値と目標値の差を確認して改善施策の優先順位を決める活動はどれか。',
+    choices: ['ギャップ分析', '総当たり攻撃', 'デッドロック', 'パリティ検査'], correctAnswer: 'ア',
+    choiceReasons: ['現状と望ましい状態の差を可視化し、価値や実現性を考えて改善項目を選びます。', '総当たり攻撃は候補を順に試す攻撃手法です。', 'デッドロックは複数処理が互いの資源解放を待つ状態です。', 'パリティ検査は伝送誤りなどを検出する方式です。'],
+    points: ['改善は測定可能な目標を設定し、実施後の効果を確認する。'], keywords: ['継続的改善', 'ギャップ分析', '改善指標'],
+  }),
+  createV180Seed({
+    id: 'ap-original-am-service-management-q010', questionNumber: 10, field: FIELDS.serviceManagement, subField: 'リリース管理',
+    questionText: '新バージョンを本番へ展開する際、段階的に対象を増やす方式の利点はどれか。',
+    choices: ['影響を限定しながら問題を検知し、必要なら展開を停止できる', '全利用者へ同時展開するより必ず作業時間がゼロになる', 'テストと監視が不要になる', '切戻し計画を作成しなくてよい'], correctAnswer: 'ア',
+    choiceReasons: ['小規模な対象で挙動を確認し、重大な問題の全体波及を抑えられます。', '段階展開には管理時間が必要で、作業時間が必ずゼロになるわけではありません。', '各段階でのテストと監視が重要です。', '問題に備えて切戻し条件と手順を準備する必要があります。'],
+    points: ['カナリアリリースや段階展開はリリースリスクを抑える。'], keywords: ['リリース管理', '段階展開', 'カナリアリリース'],
+  }),
+  createV180Seed({
+    id: 'ap-original-am-system-audit-q003', questionNumber: 3, field: FIELDS.systemAudit, subField: '監査証跡',
+    questionText: '監査証跡を保存する主な目的はどれか。',
+    choices: ['誰がいつ何を行ったかを追跡し、処理の正当性を事後検証できるようにする', '全利用者がログを自由に改ざんできるようにする', '障害発生時に記録を自動削除する', 'アクセス権限の設定を不要にする'], correctAnswer: 'ア',
+    choiceReasons: ['操作や処理の記録を時系列で残し、不正調査や統制の有効性確認に利用します。', '改ざんを許すと証拠性と信頼性が失われます。', '障害時こそ原因分析に記録が必要です。', 'ログへのアクセスも職務に応じて制御する必要があります。'],
+    points: ['ログは完全性、時刻同期、保存期間、閲覧権限を管理する。'], keywords: ['監査証跡', 'ログ', '追跡性'],
+  }),
+  createV180Seed({
+    id: 'ap-original-am-system-audit-q004', questionNumber: 4, field: FIELDS.systemAudit, subField: '監査人の独立性',
+    questionText: 'システム監査人の外観上の独立性を損なうおそれが最も大きい状況はどれか。',
+    choices: ['自ら設計・運用したシステムを自ら監査する', '監査計画を文書化する', '監査証拠を複数の方法で入手する', '被監査部門へ改善提案を説明する'], correctAnswer: 'ア',
+    choiceReasons: ['自己レビューとなり、客観的な判断に疑念を持たれるため、担当分離などが必要です。', '計画の文書化は監査の透明性と品質を高めます。', '証拠を多面的に集めることは結論の信頼性を高めます。', '独立した立場を保った改善提案の説明は監査活動として可能です。'],
+    points: ['監査では精神上と外観上の双方の独立性を確保する。'], keywords: ['独立性', '自己レビュー', 'システム監査'],
+  }),
+  createV180Seed({
+    id: 'ap-original-am-system-audit-q005', questionNumber: 5, field: FIELDS.systemAudit, subField: '監査証拠',
+    questionText: '監査調書に記録する内容として、最も適切なものはどれか。',
+    choices: ['実施した手続、入手した証拠、判断過程、結論', '根拠のない推測だけ', '被監査部門と無関係な私的情報だけ', '監査で確認していない結論だけ'], correctAnswer: 'ア',
+    choiceReasons: ['第三者が監査の過程と結論を追跡できるよう、手続と根拠を記録します。', '推測だけでは十分かつ適切な監査証拠になりません。', '監査目的と無関係な情報は収集・記録すべきではありません。', '実施事実と証拠に基づかない結論は監査品質を損ないます。'],
+    points: ['監査調書は監査品質のレビューや説明責任を支える。'], keywords: ['監査調書', '監査証拠', '説明責任'],
+  }),
+  createV180Seed({
+    id: 'ap-original-am-system-audit-q006', questionNumber: 6, field: FIELDS.systemAudit, subField: '内部統制',
+    questionText: '職務分掌によって低減できるリスクとして、最も適切なものはどれか。',
+    choices: ['一人が取引の申請、承認、記録を完結して不正を隠蔽するリスク', '地震による建物損壊のリスクだけ', '通信回線の物理的な伝送遅延だけ', '公開鍵暗号の鍵長不足だけ'], correctAnswer: 'ア',
+    choiceReasons: ['相互牽制が働くよう職務を分離し、一人で不正を実行・隠蔽しにくくします。', '自然災害には耐震、冗長化、事業継続など別の対策が必要です。', '伝送遅延はネットワーク性能上の問題で、職務分掌では解消しません。', '暗号強度は適切なアルゴリズムと鍵長の選択で管理します。'],
+    points: ['申請・承認・実行・記録・照合を適切に分離する。'], keywords: ['職務分掌', '相互牽制', '内部統制'],
+  }),
+  createV180Seed({
+    id: 'ap-original-am-system-audit-q007', questionNumber: 7, field: FIELDS.systemAudit, subField: 'アクセス権監査',
+    questionText: '退職者のアカウントが有効なまま残っていないかを定期的に照合する統制の目的はどれか。',
+    choices: ['不要な権限による不正アクセスを防ぐ', '全利用者へ管理者権限を付与する', '認証ログを削除する', 'パスワードを全員で共有する'], correctAnswer: 'ア',
+    choiceReasons: ['人事情報とアカウント一覧を照合し、不要になったアクセス経路を速やかに無効化します。', '権限拡大は最小権限に反し、リスクを高めます。', 'ログは調査や監査に必要で、削除は統制を弱めます。', '共有パスワードは利用者の識別と追跡を困難にします。'],
+    points: ['入社・異動・退職のライフサイクルと権限管理を連携させる。'], keywords: ['アクセス権', '退職者アカウント', '棚卸し'],
+  }),
+  createV180Seed({
+    id: 'ap-original-am-system-audit-q008', questionNumber: 8, field: FIELDS.systemAudit, subField: 'バックアップ監査',
+    questionText: 'バックアップ統制の有効性を確認する監査手続として、最も適切なものはどれか。',
+    choices: ['バックアップ媒体から実際に復元テストを行った記録を確認する', 'バックアップ成功の表示だけを無条件に信頼する', '復元手順を作成せず媒体を廃棄する', '本番データをバックアップなしで削除する'], correctAnswer: 'ア',
+    choiceReasons: ['取得だけでなく復元可能性が重要なので、定期的な復元テストの証拠を確認します。', '成功表示だけでは媒体破損や手順不備を発見できません。', '手順と媒体を失えば復旧可能性を確保できません。', 'バックアップなしの削除は可用性と完全性を損ないます。'],
+    points: ['RPOとRTOに適合する取得頻度・保管・復元時間を確認する。'], keywords: ['バックアップ', '復元テスト', 'RPO'],
+  }),
+  createV180Seed({
+    id: 'ap-original-am-system-audit-q009', questionNumber: 9, field: FIELDS.systemAudit, subField: 'フォローアップ',
+    questionText: '監査報告で指摘した改善事項に対してフォローアップを行う目的はどれか。',
+    choices: ['改善計画の実施状況と残存リスクを確認する', '監査報告書を直ちに破棄する', '指摘内容を被監査部門へ知らせない', '新たな証拠があっても結論を見直さない'], correctAnswer: 'ア',
+    choiceReasons: ['是正措置が計画どおり実施され、リスクが許容水準になったかを確かめます。', '報告書は改善と説明責任の基礎資料として適切に保存します。', '指摘と改善要求は関係者へ明確に伝える必要があります。', '重要な新事実があれば適切に評価し、必要な対応を行います。'],
+    points: ['フォローアップの時期と方法は指摘の重要度や期限に応じて決める。'], keywords: ['フォローアップ', '改善状況', '残存リスク'],
+  }),
+  createV180Seed({
+    id: 'ap-original-am-system-audit-q010', questionNumber: 10, field: FIELDS.systemAudit, subField: 'サンプリング',
+    questionText: '大量の取引から一部を抽出して統制の運用状況を確認する監査サンプリングで、注意すべき点はどれか。',
+    choices: ['母集団を代表するよう抽出し、標本リスクを考慮する', '都合のよい正常取引だけを意図的に選ぶ', '母集団の範囲を確認しない', '抽出結果を証拠として記録しない'], correctAnswer: 'ア',
+    choiceReasons: ['偏りを抑えた抽出と標本リスクの評価により、母集団への結論の妥当性を高めます。', '正常例だけでは例外や統制逸脱を過小評価します。', '母集団が不完全なら抽出と結論の前提が崩れます。', '抽出方法と結果を記録しなければ監査過程を追跡できません。'],
+    points: ['統計的手法でも非統計的手法でも、抽出根拠とリスクを明確にする。'], keywords: ['監査サンプリング', '母集団', '標本リスク'],
+  }),
+  createV180Seed({
+    id: 'ap-original-am-strategy-q008', questionNumber: 8, field: FIELDS.strategy, subField: 'SWOT分析',
+    questionText: 'SWOT分析で、自社の高い技術力はどの要素に分類するか。',
+    choices: ['強み（Strength）', '弱み（Weakness）', '機会（Opportunity）', '脅威（Threat）'], correctAnswer: 'ア',
+    choiceReasons: ['組織内部にあり目標達成へ有利に働く能力なので強みです。', '弱みは内部の不利な要因です。', '機会は市場拡大など外部環境の有利な要因です。', '脅威は競合参入など外部環境の不利な要因です。'],
+    points: ['SWは内部環境、OTは外部環境として整理する。'], keywords: ['SWOT', '強み', '内部環境'],
+  }),
+  createV180Seed({
+    id: 'ap-original-am-strategy-q009', questionNumber: 9, field: FIELDS.strategy, subField: '3C分析',
+    questionText: '3C分析を構成する三つの視点の組合せはどれか。',
+    choices: ['顧客・競合・自社', '品質・費用・納期', '人・物・金', '計画・実行・評価'], correctAnswer: 'ア',
+    choiceReasons: ['Customer、Competitor、Companyの三視点で市場と自社の成功要因を分析します。', '品質・費用・納期はQCDの管理視点です。', '人・物・金は代表的な経営資源です。', '計画・実行・評価は管理サイクルの要素に近い組合せです。'],
+    points: ['顧客ニーズ、競合との差、自社能力を関連付けて戦略を考える。'], keywords: ['3C', '顧客', '競合'],
+  }),
+  createV180Seed({
+    id: 'ap-original-am-strategy-q010', questionNumber: 10, field: FIELDS.strategy, subField: 'BSC',
+    questionText: 'BSCの四つの視点に含まれないものはどれか。',
+    choices: ['財務の視点', '顧客の視点', '内部ビジネスプロセスの視点', '気象観測の視点'], correctAnswer: 'エ',
+    choiceReasons: ['財務は戦略成果を示すBSCの視点です。', '顧客は提供価値や満足度を捉えるBSCの視点です。', '内部ビジネスプロセスは価値創出プロセスを捉えるBSCの視点です。', '気象観測はBSCの標準的な四視点ではありません。'],
+    points: ['残る一つは学習と成長の視点である。'], keywords: ['BSC', 'バランススコアカード', '戦略目標'],
+  }),
+  createV180Seed({
+    id: 'ap-original-am-strategy-q011', questionNumber: 11, field: FIELDS.strategy, subField: 'KPI',
+    questionText: 'KGIとKPIの関係として、適切なものはどれか。',
+    choices: ['KGIは最終目標の達成度、KPIは達成へ向かう主要プロセスの状態を測る', 'KPIは必ず金額だけで表し、KGIは測定しない', '両者はパスワード暗号化方式の名称である', 'KGI達成後に初めてKPIを設定する'], correctAnswer: 'ア',
+    choiceReasons: ['最終成果をKGIで示し、その実現に重要な活動をKPIで継続測定します。', 'KPIには件数、率、時間などもあり、KGIも測定可能に定義します。', '経営目標の指標であり、暗号方式ではありません。', '戦略実行前に因果関係を考えて両者を設定します。'],
+    points: ['指標は目標との因果関係、測定可能性、行動へのつながりを確認する。'], keywords: ['KPI', 'KGI', '業績評価'],
+  }),
+  createV180Seed({
+    id: 'ap-original-am-strategy-q012', questionNumber: 12, field: FIELDS.strategy, subField: 'ROI',
+    questionText: '200万円を投資し、その投資による利益が50万円であった。ROIを利益÷投資額×100で求めると何%か。',
+    choices: ['10%', '20%', '25%', '40%'], correctAnswer: 'ウ',
+    choiceReasons: ['10%は利益を20万円とした場合などの値で、設問の計算と一致しません。', '20%は50÷200の計算結果ではありません。', '50万円÷200万円×100＝25%です。', '40%は投資額と利益の比率を誤っています。'],
+    points: ['ROIは投下した資本に対してどれだけ利益を得たかを見る。'], keywords: ['ROI', '投資利益率', '経営指標'],
+  }),
+  createV180Seed({
+    id: 'ap-original-am-strategy-q013', questionNumber: 13, field: FIELDS.strategy, subField: '損益分岐点',
+    questionText: '販売単価5,000円、単位当たり変動費3,000円、固定費100万円のとき、損益分岐点販売数量は幾つか。',
+    choices: ['200個', '500個', '1,000個', '2,000個'], correctAnswer: 'イ',
+    choiceReasons: ['200個では限界利益が40万円で固定費を回収できません。', '単位当たり限界利益2,000円なので、100万円÷2,000円＝500個です。', '1,000個では固定費を超える限界利益が生じます。', '2,000個は損益分岐点を大きく上回ります。'],
+    points: ['損益分岐点数量＝固定費÷（販売単価−単位変動費）。'], keywords: ['損益分岐点', '限界利益', '固定費'],
+  }),
+  createV180Seed({
+    id: 'ap-original-am-strategy-q014', questionNumber: 14, field: FIELDS.strategy, subField: 'PPM',
+    questionText: 'PPMで、市場成長率が高く相対的市場占有率も高い事業はどれか。',
+    choices: ['花形', '金のなる木', '問題児', '負け犬'], correctAnswer: 'ア',
+    choiceReasons: ['高成長・高シェアの事業は花形で、成長投資を必要としながら将来の収益源が期待されます。', '金のなる木は低成長・高シェアです。', '問題児は高成長・低シェアです。', '負け犬は低成長・低シェアです。'],
+    points: ['PPMは市場成長率と相対的市場占有率で事業を四象限に分類する。'], keywords: ['PPM', '花形', '事業ポートフォリオ'],
+  }),
+  createV180Seed({
+    id: 'ap-original-am-strategy-q015', questionNumber: 15, field: FIELDS.strategy, subField: 'バリューチェーン',
+    questionText: 'バリューチェーン分析の目的として、適切なものはどれか。',
+    choices: ['企業活動を価値創出の連鎖として分解し、競争優位の源泉を分析する', '通信経路の最短距離だけを計算する', 'データベースのロックを全て解除する', '従業員のパスワードを共通化する'], correctAnswer: 'ア',
+    choiceReasons: ['主活動と支援活動を分け、顧客価値やコストに寄与する活動を分析します。', '最短経路計算はグラフアルゴリズムなどの対象です。', 'ロック解除はトランザクション制御の処理です。', 'パスワード共通化はセキュリティを低下させます。'],
+    points: ['調達、技術開発、人事、全般管理は代表的な支援活動である。'], keywords: ['バリューチェーン', '競争優位', '価値活動'],
+  }),
+  createV180Seed({
+    id: 'ap-original-am-strategy-q016', questionNumber: 16, field: FIELDS.strategy, subField: 'CRM',
+    questionText: 'CRMの導入目的として、最も適切なものはどれか。',
+    choices: ['顧客との接点や履歴を活用し、関係維持と顧客価値向上を図る', '全顧客へ同じ内容を無条件に送るだけ', '製造設備の故障原因だけを解析する', 'ネットワークの経路制御だけを行う'], correctAnswer: 'ア',
+    choiceReasons: ['顧客情報を統合してニーズに応じた対応を行い、満足度や継続利用を高めます。', '一律対応だけでは顧客特性を生かした関係管理になりません。', '設備保全はCRMの中心目的ではありません。', '経路制御はルータなどネットワーク機器の役割です。'],
+    points: ['CRMでは個人情報の利用目的や安全管理にも配慮する。'], keywords: ['CRM', '顧客関係管理', '顧客価値'],
+  }),
+  createV180Seed({
+    id: 'ap-original-am-strategy-q017', questionNumber: 17, field: FIELDS.strategy, subField: 'SCM',
+    questionText: 'SCMで需要予測や在庫情報を取引先と共有する狙いはどれか。',
+    choices: ['供給連鎖全体の在庫とリードタイムを最適化する', '各社が情報を隠して過剰在庫を増やす', '著作権の保護期間を延長する', '監査人の独立性をなくす'], correctAnswer: 'ア',
+    choiceReasons: ['企業間で需要と供給を連携し、欠品や余剰在庫、納期を全体最適します。', '情報遮断と過剰在庫はSCMの全体最適に反します。', '知的財産権の期間はSCM情報共有の目的ではありません。', '監査人の独立性とは無関係です。'],
+    points: ['部分最適ではなく、調達から販売までの全体最適を目指す。'], keywords: ['SCM', 'サプライチェーン', '在庫最適化'],
+  }),
+  createV180Seed({
+    id: 'ap-original-am-strategy-q018', questionNumber: 18, field: FIELDS.strategy, subField: 'DX',
+    questionText: 'DXの説明として、最も適切なものはどれか。',
+    choices: ['デジタル技術とデータを活用して業務や組織、ビジネスモデルを変革し競争力を高める', '紙の帳票を画像化するだけで必ず完了する', '既存業務を一切見直さず機器だけを購入する', '全ての意思決定から人を排除する'], correctAnswer: 'ア',
+    choiceReasons: ['単なる電子化にとどまらず、顧客価値や業務、組織文化を継続的に変革します。', '画像化はデジタイゼーションの一例で、それだけで事業変革を保証しません。', '技術導入と合わせて業務や価値提供の見直しが必要です。', '人の判断を全て排除することがDXの定義ではありません。'],
+    points: ['目的を事業価値に置き、データ、技術、プロセス、人材を組み合わせる。'], keywords: ['DX', 'デジタルトランスフォーメーション', 'ビジネスモデル'],
+  }),
+  createV180Seed({
+    id: 'ap-original-am-strategy-q019', questionNumber: 19, field: FIELDS.strategy, subField: '著作権',
+    questionText: '会社員が職務上作成したプログラムが職務著作となるための条件を検討する際、確認すべき事項として適切なものはどれか。',
+    choices: ['法人等の発意、業務従事者による職務上の作成、契約等の別段の定め', '特許庁への著作権登録だけ', 'プログラムの行数が一定以上かだけ', '公開鍵証明書の有効期限だけ'], correctAnswer: 'ア',
+    choiceReasons: ['職務著作の成否は法人等の発意や職務上作成した事実、契約・勤務規則の定めなどで判断します。', '著作権は登録を発生要件とせず、登録だけで職務著作になるわけではありません。', 'ソースコードの行数は職務著作の要件ではありません。', 'TLS証明書の期限は著作権の帰属と無関係です。'],
+    points: ['権利帰属は法令だけでなく契約や勤務規則の定めも確認する。'], keywords: ['著作権', '職務著作', 'プログラム'],
+  }),
+  createV180Seed({
+    id: 'ap-original-am-strategy-q020', questionNumber: 20, field: FIELDS.strategy, subField: '個人情報保護',
+    questionText: '個人データの漏えいリスクを下げる安全管理措置として、適切なものはどれか。',
+    choices: ['取扱担当者を限定し、アクセス制御と操作ログを整備する', '全従業員が目的なく全データを閲覧できるようにする', '退職者のアカウントを永久に残す', '個人データを暗号化せず公開場所へ保存する'], correctAnswer: 'ア',
+    choiceReasons: ['必要な担当者だけに権限を与え、利用状況を追跡することで不正利用や漏えいを抑えます。', '目的のない全員閲覧は最小権限と利用目的の原則に反します。', '不要アカウントは不正アクセス経路になるため速やかに無効化します。', '公開場所への平文保存は機密性を著しく損ないます。'],
+    points: ['組織的・人的・物理的・技術的な安全管理措置を組み合わせる。'], keywords: ['個人情報保護', '安全管理措置', 'アクセス制御'],
+  }),
+  createV180Seed({
+    id: 'ap-original-am-strategy-q021', questionNumber: 21, field: FIELDS.strategy, subField: '不正競争防止法',
+    questionText: '営業秘密として保護されるために必要な三要件の組合せはどれか。',
+    choices: ['秘密管理性・有用性・非公知性', '新規性・進歩性・産業上利用可能性', '完全性・可用性・機密性', '品質・費用・納期'], correctAnswer: 'ア',
+    choiceReasons: ['営業秘密には秘密として管理され、事業に有用で、公然と知られていないことが必要です。', 'これは特許要件に関係する組合せです。', 'これは情報セキュリティの代表的な三要素です。', 'これはプロジェクトなどで用いるQCDの視点です。'],
+    points: ['秘密表示、アクセス制限、秘密保持契約などで秘密管理意思を示す。'], keywords: ['営業秘密', '不正競争防止法', '秘密管理性'],
+  }),
+  createV180Seed({
+    id: 'ap-original-am-strategy-q022', questionNumber: 22, field: FIELDS.strategy, subField: '労働者派遣',
+    questionText: '労働者派遣契約と請負契約を区別する重要な観点はどれか。',
+    choices: ['発注者が作業者へ直接、業務遂行の指揮命令を行うか', '成果物のファイルサイズだけ', '利用するプログラミング言語だけ', '作業場所の郵便番号だけ'], correctAnswer: 'ア',
+    choiceReasons: ['派遣では派遣先が派遣労働者へ指揮命令し、請負では受託者が自ら労働者を指揮します。', 'ファイルサイズは契約形態を判断する本質的な基準ではありません。', '使用言語だけでは指揮命令関係を判断できません。', '所在地だけで派遣と請負は区別できません。'],
+    points: ['契約名ではなく、実際の指揮命令や業務遂行の実態で判断する。'], keywords: ['労働者派遣', '請負', '指揮命令'],
+  }),
+  createV180Seed({
+    id: 'ap-original-am-strategy-q023', questionNumber: 23, field: FIELDS.strategy, subField: '下請取引',
+    questionText: '情報システム開発を委託するとき、取引条件を明確にするための対応として適切なものはどれか。',
+    choices: ['業務内容、納期、代金、知的財産権、検収条件を書面などで明確にする', '条件を示さず作業開始後に一方的に決める', '検収基準を意図的に秘密にする', '代金支払期日を定めない'], correctAnswer: 'ア',
+    choiceReasons: ['責任範囲と受入条件を事前に合意し、取引上の紛争や認識差を防ぎます。', '事後の一方的決定は受託者との公正な取引を損ないます。', '検収基準は成果物の受入れ判断に必要で、共有すべきです。', '支払条件を明確にしないと資金・契約上の問題を招きます。'],
+    points: ['適用法令と取引実態を確認し、発注内容と変更を記録する。'], keywords: ['委託契約', '検収', '取引条件'],
+  }),
+  createV180Seed({
+    id: 'ap-original-am-strategy-q024', questionNumber: 24, field: FIELDS.strategy, subField: 'ライセンス',
+    questionText: 'オープンソースソフトウェアを製品へ組み込む前に行うべき確認として、最も適切なものはどれか。',
+    choices: ['適用ライセンスの利用・配布条件と、組合せによる義務を確認する', '無条件に著作権表示を全て削除する', 'ライセンス文書を読まずに再配布する', '脆弱性情報と更新状況を確認しない'], correctAnswer: 'ア',
+    choiceReasons: ['ライセンスごとに表示、ソース提供、再配布などの条件が異なるため、利用形態との整合を確認します。', '著作権表示の保持が条件となる場合があり、無断削除は不適切です。', '条件を確認しない再配布はライセンス違反につながります。', '法的条件に加え、セキュリティ保守状況も確認すべきです。'],
+    points: ['OSSは無償でも、著作権とライセンス条件がなくなるわけではない。'], keywords: ['OSS', 'ライセンス', '再配布'],
+  }),
+  createV180Seed({
+    id: 'ap-original-am-strategy-q025', questionNumber: 25, field: FIELDS.strategy, subField: '特許権',
+    questionText: '特許権が保護する対象として、適切なものはどれか。',
+    choices: ['自然法則を利用した技術的思想の創作のうち、要件を満たす発明', '企業名を識別する文字や図形だけ', '思想又は感情を創作的に表現した著作物だけ', '秘密管理されていない一般常識だけ'], correctAnswer: 'ア',
+    choiceReasons: ['発明について新規性や進歩性などを審査し、登録された場合に一定期間の独占権を与えます。', '商品・役務の識別標識は主に商標権の対象です。', '創作的表現は著作権の対象です。', '一般常識そのものを営業秘密として独占することはできません。'],
+    points: ['特許は出願・審査・登録が必要で、著作権の無方式主義と異なる。'], keywords: ['特許権', '発明', '知的財産権'],
+  }),
+  createV180Seed({
+    id: 'ap-original-am-strategy-q026', questionNumber: 26, field: FIELDS.strategy, subField: '商標権',
+    questionText: '商品やサービスの出所を示す名称やロゴを保護する権利はどれか。',
+    choices: ['商標権', '著作隣接権', '抵当権', '占有権'], correctAnswer: 'ア',
+    choiceReasons: ['商標権は商品・役務を他者のものと識別する標識を登録により保護します。', '著作隣接権は実演家、レコード製作者、放送事業者などの権利です。', '抵当権は債権を担保する物権です。', '占有権は物を事実上支配する状態に基づく権利です。'],
+    points: ['名称やロゴの利用前に類似商標や指定商品・役務を調査する。'], keywords: ['商標権', 'ロゴ', 'ブランド'],
+  }),
+  createV180Seed({
+    id: 'ap-original-am-strategy-q027', questionNumber: 27, field: FIELDS.strategy, subField: 'コンプライアンス',
+    questionText: '企業のコンプライアンス活動として、最も適切なものはどれか。',
+    choices: ['法令だけでなく社内規程や社会的規範を踏まえ、教育・相談・通報・是正の仕組みを運用する', '違反を発見しても記録せず隠蔽する', '経営層だけを規程の対象外にする', '通報者への報復を推奨する'], correctAnswer: 'ア',
+    choiceReasons: ['規範を周知し、相談と検知、調査、是正、再発防止を継続的に機能させます。', '隠蔽は違反を拡大させ、説明責任を損ないます。', '組織の全構成員が役割に応じて規範を守る必要があります。', '通報者保護を欠くと問題の早期発見が難しくなります。'],
+    points: ['経営層の姿勢、実効的な教育、相談窓口、内部通報制度が重要である。'], keywords: ['コンプライアンス', '内部通報', '企業倫理'],
+  }),
+]
 
 export const questions: Question[] = [
   createQuestion({
@@ -702,6 +1295,7 @@ export const questions: Question[] = [
     points: ['RFIは情報提供依頼、RFPは提案依頼。'], keywords: ['RFP', '調達', '提案依頼書'],
   }),
 
+  ...v180QuestionSeeds.map(createQuestion),
 ]
 
 const questionIdAliases = new Map(questions.flatMap(question => (question.legacyIds ?? []).map(legacyId => [legacyId, question.id] as const)))

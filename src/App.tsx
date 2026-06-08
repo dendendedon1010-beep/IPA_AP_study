@@ -29,7 +29,7 @@ import { questions } from './data/questions'
 import { defaultSettings, loadBookmarks, loadHistory, loadSession, loadSettings, resetData, saveBookmarks, saveHistory, saveSession, saveSettings } from './lib/storage'
 import type { AnswerHistory, BookmarkStore, ChoiceKey, Confidence, MistakeTag, PracticeMode, PracticeSession, Question, ReviewPriority, Settings, Tab } from './types'
 
-const APP_VERSION = 'v1.7.1'
+const APP_VERSION = 'v1.8.0'
 const nav: { id: Tab; label: string; icon: typeof Home }[] = [
   { id: 'home', label: 'ホーム', icon: Home },
   { id: 'practice', label: '演習', icon: BookOpen },
