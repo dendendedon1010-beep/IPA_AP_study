@@ -28,12 +28,13 @@ import {
   X,
 } from 'lucide-react'
 import { questions } from './data/questions'
+import { buildLearningRoadmap, getTodayLearningPlan } from './lib/learningRoadmap'
 import { createMorningMockExam, formatMockExamTime, getMockExamRemainingSeconds } from './lib/mockExam'
 import { buildReviewSchedule, getDueReviewItems, getReviewDayDistance, getReviewPriorityForQuestion, getTodayDateString, getUpcomingReviewItems } from './lib/reviewSchedule'
 import { clearMockExamResults, defaultSettings, deleteMockExamResult, loadBookmarks, loadHistory, loadMockExamResults, loadMockExamSession, loadSession, loadSettings, resetData, saveBookmarks, saveHistory, saveMockExamResults, saveMockExamSession, saveSession, saveSettings } from './lib/storage'
 import type { AnswerHistory, BookmarkStore, ChoiceKey, Confidence, MistakeTag, MockExamAnswer, MockExamResult, MockExamSession, PracticeMode, PracticeSession, Question, ReviewPriority, ReviewScheduleItem, Settings, Tab } from './types'
 
-const APP_VERSION = 'v2.1.0'
+const APP_VERSION = 'v2.2.0'
 const nav: { id: Tab; label: string; icon: typeof Home }[] = [
   { id: 'home', label: 'ホーム', icon: Home },
   { id: 'practice', label: '演習', icon: BookOpen },
@@ -493,7 +494,7 @@ function App() {
         </header>
 
         <main ref={contentRef} className={`min-w-0 max-w-full overflow-x-hidden px-4 pt-[92px] ${session || mockExamOpen ? 'pb-[138px]' : 'pb-[104px]'}`}>
-          {tab === 'home' && <HomeScreen history={safeHistory} mockExamResults={mockExamResults} onStart={startPractice} onReview={() => setTab('review')} onMockHistory={() => setTab('analytics')} />}
+          {tab === 'home' && <HomeScreen history={safeHistory} mockExamResults={mockExamResults} onStart={startPractice} onStartMock={startMockExam} onReview={() => setTab('review')} onAnalytics={() => setTab('analytics')} />}
           {tab === 'practice' && (mockExamOpen && mockExam ? (
             <MockExamFlow
               session={mockExam}
@@ -520,7 +521,7 @@ function App() {
             </>
           ) : <PracticeMenu history={safeHistory} bookmarks={safeBookmarks} mockExam={mockExam} onStart={startPractice} onStartMock={startMockExam} onResumeMock={() => setMockExamOpen(true)} onDiscardMock={() => setMockExam(null)} onToggleBookmark={toggleBookmark} />)}
           {tab === 'review' && <ReviewScreen history={safeHistory} bookmarks={safeBookmarks} onStart={startPractice} />}
-          {tab === 'analytics' && <Analytics history={safeHistory} mockExamResults={mockExamResults} onReview={startSavedMockReview} onDelete={resultId => setMockExamResults(deleteMockExamResult(resultId))} onClear={() => setMockExamResults(clearMockExamResults())} />}
+          {tab === 'analytics' && <Analytics history={safeHistory} mockExamResults={mockExamResults} onStart={startPractice} onStartMock={startMockExam} onReview={startSavedMockReview} onDelete={resultId => setMockExamResults(deleteMockExamResult(resultId))} onClear={() => setMockExamResults(clearMockExamResults())} />}
           {tab === 'settings' && (
             <SettingsScreen
               value={safeSettings}
@@ -566,38 +567,45 @@ function App() {
   )
 }
 
-function HomeScreen({ history, mockExamResults, onStart, onReview, onMockHistory }: { history: AnswerHistory[]; mockExamResults: MockExamResult[]; onStart: (items?: Question[], mode?: PracticeMode) => void; onReview: () => void; onMockHistory: () => void }) {
+function HomeScreen({ history, mockExamResults, onStart, onStartMock, onReview, onAnalytics }: { history: AnswerHistory[]; mockExamResults: MockExamResult[]; onStart: (items?: Question[], mode?: PracticeMode) => void; onStartMock: () => void; onReview: () => void; onAnalytics: () => void }) {
   const stats = useMemo(() => getFieldStats(history), [history])
-  const latest = useMemo(() => getLatestAnswers(history), [history])
   const accuracy = history.length ? Math.round((history.filter(answer => answer.isCorrect).length / history.length) * 100) : 0
   const todayAnswers = history.filter(answer => answerDateKey(answer.answeredAt) === todayKey()).length
   const schedule = useMemo(() => buildReviewSchedule(questions, history), [history])
+  const roadmap = useMemo(() => buildLearningRoadmap(questions, history, mockExamResults, schedule), [history, mockExamResults, schedule])
+  const todayPlan = useMemo(() => getTodayLearningPlan(roadmap, schedule, mockExamResults, history, questions), [roadmap, schedule, mockExamResults, history])
   const today = todayKey()
   const dueItems = useMemo(() => getDueReviewItems(schedule, today), [schedule, today])
-  const dueQuestions = useMemo(() => questionsForSchedule(dueItems), [dueItems])
   const highPriorityCount = dueItems.filter(item => item.priority === 'high').length
   const overdueCount = dueItems.filter(item => item.nextReviewDate < today).length
   const ranked = stats.filter(item => item.count > 0)
   const weak = [...ranked].sort((a, b) => a.accuracy - b.accuracy || b.incorrect - a.incorrect).slice(0, 3)
   const strong = [...ranked].sort((a, b) => b.accuracy - a.accuracy || b.count - a.count).slice(0, 3)
-  const recommendation = useMemo(() => getRecommendation(history), [history])
   const latestMock = mockExamResults[mockExamResults.length - 1]
   const mockWeakField = getMockWeakFields(mockExamResults, 1)[0]
   const mockPassTarget = latestMock ? Math.ceil(latestMock.totalQuestions * 0.6) : 0
 
+  const startTodayPlan = () => {
+    if (todayPlan.action.type === 'mock-exam') { onStartMock(); return }
+    const items = todayPlan.action.questionIds.map(id => questions.find(question => question.id === id)).filter((question): question is Question => Boolean(question))
+    onStart(items.length ? items : shuffle(questions).slice(0, 10), items.length ? todayPlan.mode : 'random-10')
+  }
+
   return (
     <div className="space-y-5">
       <section className="overflow-hidden rounded-[28px] bg-ink p-5 text-white shadow-card">
-        <div className="flex items-start justify-between">
-          <div>
-            <p className="text-[11px] font-bold text-lime">今日のおすすめ学習</p>
-            <h2 className="mt-2 max-w-[280px] text-xl font-bold leading-snug">{dueItems.length ? (highPriorityCount ? 'まずは優先度 高 の問題から復習しましょう' : '今日の復習を進めましょう') : recommendation.text}</h2>
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <p className="text-[11px] font-bold text-lime">今日の学習プラン</p>
+            <h2 className="mt-2 text-xl font-bold leading-snug">{todayPlan.title}</h2>
+            <p className="mt-2 text-xs leading-relaxed text-slate-300">理由：{todayPlan.reason}</p>
           </div>
-          <div className="grid size-12 place-items-center rounded-2xl bg-white/10"><Sparkles className="text-lime" /></div>
+          <div className="grid size-12 shrink-0 place-items-center rounded-2xl bg-white/10"><Sparkles className="text-lime" /></div>
         </div>
-        <button onClick={() => onStart(dueItems.length ? dueQuestions : recommendation.items, dueItems.length ? 'today-review' : recommendation.mode)} className="mt-5 flex h-12 w-full items-center justify-center gap-2 rounded-2xl bg-lime font-bold text-ink">
-          <Play size={18} fill="currentColor" />{dueItems.length ? '今日の復習を始める' : 'おすすめ演習を始める'}
+        <button onClick={startTodayPlan} className="mt-5 flex h-12 w-full items-center justify-center gap-2 rounded-2xl bg-lime px-3 font-bold text-ink">
+          <Play size={18} fill="currentColor" />{todayPlan.action.label}
         </button>
+        <button onClick={onAnalytics} className="mt-2 flex h-10 w-full items-center justify-center gap-1 rounded-xl border border-white/20 text-xs font-bold text-white">学習ロードマップを見る<ChevronRight size={16} /></button>
       </section>
 
       <section className="grid grid-cols-2 gap-3">
@@ -618,7 +626,7 @@ function HomeScreen({ history, mockExamResults, onStart, onReview, onMockHistory
       <section className="rounded-[24px] bg-white p-5 shadow-sm dark:bg-white/5">
         <div className="flex items-center gap-2 font-bold"><ClipboardCheck size={19} className="text-moss dark:text-lime" />午前模試サマリー</div>
         {latestMock ? <><div className="mt-4 grid grid-cols-2 gap-3"><Metric label="最新模試" value={`${latestMock.accuracyRate}%`} /><Metric label="合格目安まで" value={latestMock.passed ? 'クリア' : `あと${Math.max(0, mockPassTarget - latestMock.correctCount)}問`} /></div><p className="mt-4 rounded-xl bg-lime/30 p-3 text-xs font-bold leading-relaxed">次は{mockWeakField?.field ?? '不正解問題'}を復習しましょう</p></> : <p className="mt-4 text-xs leading-relaxed text-slate-500 dark:text-slate-300">午前模試を受けて実力を確認しましょう。</p>}
-        <button onClick={onMockHistory} className="mt-4 flex h-11 w-full items-center justify-center gap-1 rounded-xl border border-moss text-xs font-bold text-moss dark:border-lime dark:text-lime">模試履歴を見る<ChevronRight size={16} /></button>
+        <button onClick={onAnalytics} className="mt-4 flex h-11 w-full items-center justify-center gap-1 rounded-xl border border-moss text-xs font-bold text-moss dark:border-lime dark:text-lime">模試履歴を見る<ChevronRight size={16} /></button>
       </section>
 
       <section className="rounded-[24px] bg-white p-5 shadow-sm dark:bg-white/5">
@@ -1112,7 +1120,7 @@ function HistoryReviewButton({ label, count, onClick }: { label: string; count: 
   return <button onClick={onClick} className="min-h-11 rounded-xl border border-slate-200 px-2 text-[10px] font-bold dark:border-white/10">{label}を復習（{count}問）</button>
 }
 
-function Analytics({ history, mockExamResults, onReview, onDelete, onClear }: { history: AnswerHistory[]; mockExamResults: MockExamResult[]; onReview: (questionIds: string[], mode: PracticeMode) => void; onDelete: (resultId: string) => void; onClear: () => void }) {
+function Analytics({ history, mockExamResults, onStart, onStartMock, onReview, onDelete, onClear }: { history: AnswerHistory[]; mockExamResults: MockExamResult[]; onStart: (items?: Question[], mode?: PracticeMode) => void; onStartMock: () => void; onReview: (questionIds: string[], mode: PracticeMode) => void; onDelete: (resultId: string) => void; onClear: () => void }) {
   const data = useMemo(() => getFieldStats(history), [history])
   const mistakeCounts = useMemo(() => getMistakeCounts(history), [history])
   const schedule = useMemo(() => buildReviewSchedule(questions, history), [history])
@@ -1122,9 +1130,28 @@ function Analytics({ history, mockExamResults, onReview, onDelete, onClear }: { 
   const fieldReviewCounts = allFields.map(field => ({ field, count: schedule.filter(item => questions.find(question => question.id === item.questionId)?.field === field).length })).filter(item => item.count)
   const topMistake = [...mistakeCounts].sort((a, b) => b.count - a.count)[0]
   const studyDays = new Set(history.map(answer => answerDateKey(answer.answeredAt))).size
+  const roadmap = useMemo(() => buildLearningRoadmap(questions, history, mockExamResults, schedule), [history, mockExamResults, schedule])
+  const startRoadmapAction = (step: (typeof roadmap)[number]) => {
+    if (step.action.type === 'mock-exam') { onStartMock(); return }
+    const items = step.action.questionIds.map(id => questions.find(question => question.id === id)).filter((question): question is Question => Boolean(question))
+    onStart(items.length ? items : shuffle(questions).slice(0, 10), items.length ? 'recommended' : 'random-10')
+  }
   return (
     <div className="space-y-5">
       <div className="grid grid-cols-2 gap-3"><SummaryCard icon={Flame} label="学習日数" value={`${studyDays}日`} /><SummaryCard icon={BookOpen} label="総回答数" value={`${history.length}問`} /></div>
+      <section className="rounded-[24px] bg-white p-4 shadow-card dark:bg-white/5">
+        <div className="flex items-center gap-2 font-bold"><Target size={19} className="text-moss dark:text-lime" />学習ロードマップ</div>
+        <p className="mt-2 text-xs leading-relaxed text-slate-500 dark:text-slate-300">回答・復習・模試の記録から、合格までの現在地を自動計算します。</p>
+        <div className="mt-4 space-y-3">
+          {roadmap.map(step => <article key={step.id} className="rounded-2xl border border-slate-100 p-4 dark:border-white/10">
+            <div className="flex items-start justify-between gap-3"><div className="min-w-0"><p className="text-[10px] font-bold text-moss dark:text-lime">STEP {step.id}</p><h3 className="mt-1 text-sm font-bold">{step.name}</h3></div><span className="tabular shrink-0 text-lg font-bold">{step.progress}%</span></div>
+            <div className="mt-3 h-2 rounded-full bg-slate-100 dark:bg-white/10"><div className="h-full rounded-full bg-moss dark:bg-lime" style={{ width: `${step.progress}%` }} /></div>
+            <div className="mt-3 flex flex-wrap gap-1.5">{step.fields.map(field => <span key={field} className="rounded-full bg-slate-100 px-2 py-1 text-[9px] font-bold text-slate-600 dark:bg-white/10 dark:text-slate-300">{field}</span>)}</div>
+            <p className="mt-3 text-xs font-bold">現在：{step.state}</p><p className="mt-1 text-xs text-slate-500 dark:text-slate-300">次にやること：{step.nextAction}</p>
+            <button onClick={() => startRoadmapAction(step)} className="mt-3 flex h-10 w-full items-center justify-center gap-1 rounded-xl bg-moss text-xs font-bold text-white dark:bg-lime dark:text-ink">{step.action.label}<ChevronRight size={15} /></button>
+          </article>)}
+        </div>
+      </section>
       <MockExamHistory results={mockExamResults} onReview={onReview} onDelete={onDelete} onClear={onClear} />
       <section className="rounded-[24px] bg-white p-4 shadow-card dark:bg-white/5">
         <div className="mb-4 flex items-center gap-2 font-bold"><RotateCcw size={19} className="text-moss dark:text-lime" />復習スケジュール</div>

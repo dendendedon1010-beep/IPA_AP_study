@@ -93,6 +93,31 @@ export interface PracticeSession {
   answers: SessionAnswer[]
 }
 
+
+export interface RoadmapAction {
+  type: 'questions' | 'mock-exam'
+  label: string
+  questionIds: string[]
+}
+
+export interface LearningRoadmapStep {
+  id: number
+  name: string
+  fields: string[]
+  progress: number
+  state: string
+  nextAction: string
+  action: RoadmapAction
+  weakFields: string[]
+}
+
+export interface TodayLearningPlan {
+  title: string
+  reason: string
+  action: RoadmapAction
+  mode: PracticeMode
+}
+
 export interface MockExamFieldStat {
   total: number
   correct: number
