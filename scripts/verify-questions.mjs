@@ -30,6 +30,7 @@ const transpile = async (sourcePath, outputName) => {
 try {
   await transpile('src/data/fields.ts', 'fields.js')
   await transpile('src/data/questions/ipa/ap/r07-autumn-morning.ts', 'questions/ipa/ap/r07-autumn-morning.js')
+  await transpile('src/data/questions/ipa/ap/r07-spring-morning.ts', 'questions/ipa/ap/r07-spring-morning.js')
   await transpile('src/data/questions.ts', 'questions.js')
   await transpile('src/data/ipaPastExams.ts', 'ipaPastExams.js')
   const [{ FIELD_NAMES }, { questions }, { ipaPastExamCatalog }] = await Promise.all([
