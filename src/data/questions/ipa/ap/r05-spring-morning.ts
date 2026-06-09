@@ -3,11 +3,37 @@ import type { ChoiceKey, Question } from '../../../../types.js'
 
 const choiceKeys: ChoiceKey[] = ['ア', 'イ', 'ウ', 'エ']
 
-type Seed = { number: number; field: Question['field']; subField: string; text: string; choices: [string, string, string, string]; answer: ChoiceKey; reasons: [string, string, string, string]; points: string[]; keywords: string[] }
+type Seed = { number: number; field: Question['field']; subField: string; text: string; tables?: Question['tables']; choices: [string, string, string, string]; answer: ChoiceKey; reasons: [string, string, string, string]; points: string[]; keywords: string[] }
 
 const questionPdfUrl = 'https://www.ipa.go.jp/shiken/mondai-kaiotu/ps6vr70000010d6y-att/2023r05h_ap_am_qs.pdf'
 
 const seeds: Seed[] = [
+  {
+    number: 53, field: FIELDS.projectManagement, subField: '作業配分モデル',
+    text: '過去のプロジェクトの開発実績に基づいて構築した作業配分モデルがある。システム要件定義からシステム内部設計までをモデルどおりに進めて228日で完了し，プログラム開発を開始した。現在，200本のプログラムのうち100本のプログラムの開発を完了し，残りの100本は未着手の状況である。プログラム開発以降もモデルどおりに進捗すると仮定するとき，プロジェクトの完了まで，あと何日掛かるか。ここで，プログラムの開発に掛かる工数及び期間は，全てのプログラムで同一であるものとする。',
+    tables: [{
+      caption: '作業配分モデル',
+      headers: ['', 'システム要件定義', 'システム外部設計', 'システム内部設計', 'プログラム開発', 'システム結合', 'システムテスト'],
+      rows: [['工数比', '0.17', '0.21', '0.16', '0.16', '0.11', '0.19'], ['期間比', '0.25', '0.21', '0.11', '0.11', '0.11', '0.21']],
+      sourceName: '情報処理推進機構（IPA） 応用情報技術者試験 令和5年度 春期 午前 問53', sourceUrl: questionPdfUrl,
+    }],
+    choices: ['140', '150', '161', '172'], answer: 'イ',
+    reasons: ['残作業期間を過小に見積もっている。', '要件定義から内部設計までの期間比0.57が228日なので全期間は400日。プログラム開発の残り半分22日と，結合44日，テスト84日の合計は150日である。', 'プログラム開発を全期間として計上しており，完了済み半分を除けていない。', '残作業期間を過大に見積もっている。'],
+    points: ['完了済み工程の期間比から全期間を求め，プログラム開発は未完了分だけを加える。'], keywords: ['作業配分モデル', 'プロジェクト見積り', '期間比'],
+  },
+  {
+    number: 57, field: FIELDS.serviceManagement, subField: 'クラウドサービス',
+    text: 'A社は，自社がオンプレミスで運用している業務システムを，クラウドサービスへ段階的に移行する。段階的移行では，初めにネットワークとサーバをIaaSに移行し，次に全てのミドルウェアをPaaSに移行する。A社が行っているシステム運用作業のうち，この移行によって不要となる作業の組合せはどれか。\n\n[A社が行っているシステム運用作業]\n① 業務システムのバッチ処理のジョブ監視\n② 物理サーバの起動，停止のオペレーション\n③ ハードウェアの異常を警告する保守ランプの目視監視\n④ ミドルウェアへのパッチ適用',
+    tables: [{
+      caption: '移行によって不要となるシステム運用作業',
+      headers: ['選択肢', 'IaaSへの移行によって不要', 'PaaSへの移行によって不要'],
+      rows: [['ア', '①', '②，④'], ['イ', '①，③', '②'], ['ウ', '②，③', '④'], ['エ', '③', '②，④']],
+      sourceName: '情報処理推進機構（IPA） 応用情報技術者試験 令和5年度 春期 午前 問57', sourceUrl: questionPdfUrl,
+    }],
+    choices: ['IaaS：①／PaaS：②，④', 'IaaS：①，③／PaaS：②', 'IaaS：②，③／PaaS：④', 'IaaS：③／PaaS：②，④'], answer: 'ウ',
+    reasons: ['ジョブ監視は利用者側に残り，物理サーバ作業はIaaS移行時に不要となる。', 'ジョブ監視はIaaS移行後も利用者側に残る。', 'IaaSでは物理サーバの起動停止と保守ランプ監視が不要になり，PaaSではミドルウェアへのパッチ適用が不要になる。', '物理サーバの起動停止はPaaSではなくIaaSへの移行時点で不要になる。'],
+    points: ['IaaSは物理基盤を，PaaSはミドルウェアまでをサービス提供者が管理する。'], keywords: ['IaaS', 'PaaS', '責任共有モデル'],
+  },
   {
     number: 36, field: FIELDS.security, subField: 'マルウェア',
     text: 'ボットネットにおいてC&Cサーバが担う役割はどれか。',
@@ -76,7 +102,7 @@ const seeds: Seed[] = [
 const createQuestion = (seed: Seed): Question => ({
   id: `ap-r05-spring-am-q${String(seed.number).padStart(3, '0')}`,
   examYear: 2023, examSeason: '春期', examType: 'morning', questionNumber: seed.number,
-  field: seed.field, subField: seed.subField, questionText: seed.text,
+  field: seed.field, subField: seed.subField, questionText: seed.text, tables: seed.tables,
   choices: seed.choices.map((text, index) => ({ key: choiceKeys[index], text })),
   correctAnswer: seed.answer,
   officialAnswerText: `${seed.answer}：${seed.choices[choiceKeys.indexOf(seed.answer)]}`,
