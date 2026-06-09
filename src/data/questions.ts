@@ -3,6 +3,7 @@ import type { FieldName } from './fields.js'
 import type { Choice, ChoiceKey, Question } from '../types'
 import { r07AutumnMorningQuestions } from './questions/ipa/ap/r07-autumn-morning.js'
 import { r07SpringMorningQuestions } from './questions/ipa/ap/r07-spring-morning.js'
+import { r06AutumnMorningQuestions } from './questions/ipa/ap/r06-autumn-morning.js'
 
 const ipaPastQuestionUrl = 'https://www.ipa.go.jp/shiken/mondai-kaiotu/m42obm000000afqx-att/2024r06a_ap_am_qs.pdf'
 const syllabusUrl = 'https://www.ipa.go.jp/shiken/syllabus/gaiyou.html'
@@ -665,14 +666,6 @@ export const questions: Question[] = [
     points: ['統計解析・可視化・豊富なパッケージといえばR。'], keywords: ['R言語', '統計解析', 'オープンソース'],
   }),
   createQuestion({
-    id: 'ap-r06-autumn-am-q020', legacyId: 'r6a-20', questionNumber: 20, field: FIELDS.computerSystems, subField: 'システム構成', quoted: true,
-    questionText: 'システムの信頼性を高めるために、現用系と待機系の二つの系統を用意し、現用系に障害が発生したときに待機系へ切り替える構成はどれか。',
-    choices: ['デュアルシステム', 'デュプレックスシステム', 'スタンバイシステム', 'マルチプロセッサシステム'], correctAnswer: 'ウ',
-    correctReason: '現用系と待機系を用意して障害時に切り替える構成はスタンバイシステムです。',
-    wrongReasons: { ア: 'デュアルシステムは二系統で同じ処理を行い、結果を照合します。', イ: 'デュプレックスは二重化の総称で、設問の特徴を直接示すのはスタンバイです。', エ: '複数CPUで処理する構成であり、現用・待機の切替を表しません。' },
-    points: ['現用系＋待機系＝スタンバイ、両系同時処理・照合＝デュアル。'], keywords: ['信頼性', '冗長化', 'フェールオーバー'],
-  }),
-  createQuestion({
     id: 'ap-r06-autumn-am-q029', legacyId: 'r6a-29', questionNumber: 29, field: FIELDS.database, subField: 'トランザクション', quoted: true,
     questionText: 'データベースのトランザクションが備えるべきACID特性のうち、一連の処理が全て実行されるか、全く実行されないかのいずれかになることを示す特性はどれか。',
     choices: ['一貫性（Consistency）', '原子性（Atomicity）', '分離性（Isolation）', '永続性（Durability）'], correctAnswer: 'イ',
@@ -1300,6 +1293,7 @@ export const questions: Question[] = [
   ...v180QuestionSeeds.map(createQuestion),
   ...r07AutumnMorningQuestions,
   ...r07SpringMorningQuestions,
+  ...r06AutumnMorningQuestions,
 ]
 
 const questionIdAliases = new Map(questions.flatMap(question => (question.legacyIds ?? []).map(legacyId => [legacyId, question.id] as const)))
