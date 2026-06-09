@@ -152,9 +152,9 @@ export const ipaPastExamCatalog: IpaPastExamCatalogItem[] = [
     questionPdfUrl: 'https://www.ipa.go.jp/shiken/mondai-kaiotu/gmcbt80000009sgk-att/2022r04h_ap_am_qs.pdf',
     answerPdfUrl: 'https://www.ipa.go.jp/shiken/mondai-kaiotu/gmcbt80000009sgk-att/2022r04h_ap_am_ans.pdf',
     sourcePageUrl: 'https://www.ipa.go.jp/shiken/mondai-kaiotu/2022r04.html',
-    note: '公式確認済みのテキストで完結する9問を取り込み済み。図表依存問題などは未取り込み',
+    note: '公式確認済みの11問を取り込み済み。うち2問は表付き問題。図表依存で未取り込みの問題あり',
     isReadyForImport: true,
-    importedQuestionCount: 9,
+    importedQuestionCount: 11,
     importStatus: 'imported',
   },
   {
@@ -175,9 +175,9 @@ export const ipaPastExamCatalog: IpaPastExamCatalogItem[] = [
     questionPdfUrl: 'https://www.ipa.go.jp/shiken/mondai-kaiotu/gmcbt80000008smf-att/2022r04a_ap_am_qs.pdf',
     answerPdfUrl: 'https://www.ipa.go.jp/shiken/mondai-kaiotu/gmcbt80000008smf-att/2022r04a_ap_am_ans.pdf',
     sourcePageUrl: 'https://www.ipa.go.jp/shiken/mondai-kaiotu/2022r04.html',
-    note: '公式確認済みのテキストで完結する7問を取り込み済み。図表依存問題などは未取り込み',
+    note: '公式確認済みの8問を取り込み済み。うち1問は表付き問題。図表依存で未取り込みの問題あり',
     isReadyForImport: true,
-    importedQuestionCount: 7,
+    importedQuestionCount: 8,
     importStatus: 'imported',
   },
   {

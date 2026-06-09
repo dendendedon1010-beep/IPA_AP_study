@@ -2,7 +2,7 @@ import { FIELDS } from '../../../fields.js'
 import type { ChoiceKey, Question } from '../../../../types.js'
 
 const choiceKeys: ChoiceKey[] = ['ア', 'イ', 'ウ', 'エ']
-type Seed = { number: number; field: Question['field']; subField: string; text: string; choices: [string, string, string, string]; answer: ChoiceKey; reasons: [string, string, string, string]; points: string[]; keywords: string[] }
+type Seed = { number: number; field: Question['field']; subField: string; text: string; choices: [string, string, string, string]; answer: ChoiceKey; reasons: [string, string, string, string]; points: string[]; keywords: string[]; tables?: Question['tables'] }
 const questionPdfUrl = 'https://www.ipa.go.jp/shiken/mondai-kaiotu/gmcbt80000008smf-att/2022r04a_ap_am_qs.pdf'
 
 const seeds: Seed[] = [
@@ -49,6 +49,20 @@ const seeds: Seed[] = [
     points: ['EAは組織全体を複数のアーキテクチャ体系で整理する。'], keywords: ['EA', '全体最適', 'アーキテクチャ'],
   },
   {
+    number: 64, field: FIELDS.strategy, subField: '投資評価',
+    text: '投資効果を正味現在価値法で評価するとき，最も投資効果が大きい（又は最も損失が小さい）シナリオはどれか。ここで，期間は3年間，割引率は5%とし，各シナリオのキャッシュフローは表のとおりとする。',
+    choices: ['A', 'B', 'C', '投資をしない'], answer: 'イ',
+    reasons: ['回収額が後半に偏るので，同じ総回収額でも現在価値はBより小さくなる。', '各案の投資額と総回収額は同じだが，Bは回収額が早い時期に多く，割引後の現在価値が最大になる。', '回収額が毎年均等なので，早期回収が多いBより現在価値は小さくなる。', 'Bの正味現在価値は正であり，投資をしない場合の正味現在価値0より大きい。'],
+    points: ['同額のキャッシュフローは，受取り時期が早いほど現在価値が大きい。'], keywords: ['正味現在価値法', 'NPV', 'キャッシュフロー', '割引率'],
+    tables: [{
+      caption: 'シナリオ別キャッシュフロー（単位：万円）',
+      headers: ['シナリオ', '投資額', '回収額 1年目', '回収額 2年目', '回収額 3年目'],
+      rows: [['A', '220', '40', '80', '120'], ['B', '220', '120', '80', '40'], ['C', '220', '80', '80', '80'], ['投資をしない', '0', '0', '0', '0']],
+      sourceName: '情報処理推進機構（IPA） 応用情報技術者試験 令和4年度 秋期 午前 問64',
+      sourceUrl: questionPdfUrl,
+    }],
+  },
+  {
     number: 65, field: FIELDS.strategy, subField: 'リスク対応',
     text: '組込み機器のハードウェアの製造を外部に委託する場合のコンティンジェンシープランの記述として，適切なものはどれか。',
     choices: ['実績のある外注先の利用によって，リスクの発生確率を低減する。', '製造品質が担保されていることを確認できるように委託先と契約する。', '複数の会社の見積りを比較検討して，委託先を選定する。', '部品調達のリスクが顕在化したときに備えて，対処するための計画を策定する。'], answer: 'エ',
@@ -61,6 +75,7 @@ const createQuestion = (seed: Seed): Question => ({
   id: `ap-r04-autumn-am-q${String(seed.number).padStart(3, '0')}`,
   examYear: 2022, examSeason: '秋期', examType: 'morning', questionNumber: seed.number,
   field: seed.field, subField: seed.subField, questionText: seed.text,
+  tables: seed.tables,
   choices: seed.choices.map((text, index) => ({ key: choiceKeys[index], text })),
   correctAnswer: seed.answer,
   officialAnswerText: `${seed.answer}：${seed.choices[choiceKeys.indexOf(seed.answer)]}`,
