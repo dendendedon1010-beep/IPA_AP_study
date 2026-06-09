@@ -35,7 +35,7 @@ import { buildReviewSchedule, getDueReviewItems, getReviewDayDistance, getReview
 import { clearMockExamResults, defaultSettings, deleteMockExamResult, loadBookmarks, loadHistory, loadMockExamResults, loadMockExamSession, loadSession, loadSettings, resetData, saveBookmarks, saveHistory, saveMockExamResults, saveMockExamSession, saveSession, saveSettings } from './lib/storage'
 import type { AnswerHistory, BookmarkStore, ChoiceKey, Confidence, MistakeTag, MockExamAnswer, MockExamResult, MockExamSession, PracticeMode, PracticeSession, Question, ReviewPriority, ReviewScheduleItem, Settings, Tab } from './types'
 
-const APP_VERSION = 'v2.3.0'
+const APP_VERSION = 'v2.4.0'
 const nav: { id: Tab; label: string; icon: typeof Home }[] = [
   { id: 'home', label: 'ホーム', icon: Home },
   { id: 'practice', label: '演習', icon: BookOpen },
@@ -1212,7 +1212,7 @@ function SettingsScreen({ value, onChange, onReset }: { value: Settings; onChang
                     <p className="text-xs font-bold">{item.period.eraLabel} {item.period.seasonLabel} {item.paperType === 'morning' ? '午前' : '午後'}</p>
                     <p className="mt-1 text-[10px] text-slate-400">{item.note ?? '今後取り込み予定'}</p>
                   </div>
-                  <span className={`shrink-0 rounded-full px-2 py-1 text-[9px] font-bold ${item.isReadyForImport ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300' : 'bg-amber-50 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300'}`}>{item.isReadyForImport ? '投入準備済み' : '未取り込み'}</span>
+                  <span className={`shrink-0 rounded-full px-2 py-1 text-[9px] font-bold ${item.isReadyForImport ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300' : 'bg-amber-50 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300'}`}>{item.importStatus === 'imported' ? `${item.importedQuestionCount ?? 0}問取り込み済み` : item.isReadyForImport ? '投入準備済み' : '未取り込み'}</span>
                 </div>
                 {officialUrl && <a href={officialUrl} target="_blank" rel="noreferrer" className="mt-2 inline-block text-[10px] font-bold text-moss underline dark:text-lime">公式資料を開く</a>}
               </div>

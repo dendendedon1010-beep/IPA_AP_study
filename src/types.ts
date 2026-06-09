@@ -32,6 +32,8 @@ export interface IpaPastExamCatalogItem {
   sourcePageUrl?: string
   note?: string
   isReadyForImport: boolean
+  importedQuestionCount?: number
+  importStatus?: 'not-imported' | 'partial' | 'imported'
 }
 
 export interface Choice {

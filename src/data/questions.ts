@@ -1,6 +1,7 @@
 import { FIELDS } from './fields.js'
 import type { FieldName } from './fields.js'
 import type { Choice, ChoiceKey, Question } from '../types'
+import { r07AutumnMorningQuestions } from './questions/ipa/ap/r07-autumn-morning.js'
 
 const ipaPastQuestionUrl = 'https://www.ipa.go.jp/shiken/mondai-kaiotu/m42obm000000afqx-att/2024r06a_ap_am_qs.pdf'
 const syllabusUrl = 'https://www.ipa.go.jp/shiken/syllabus/gaiyou.html'
@@ -1296,6 +1297,7 @@ export const questions: Question[] = [
   }),
 
   ...v180QuestionSeeds.map(createQuestion),
+  ...r07AutumnMorningQuestions,
 ]
 
 const questionIdAliases = new Map(questions.flatMap(question => (question.legacyIds ?? []).map(legacyId => [legacyId, question.id] as const)))

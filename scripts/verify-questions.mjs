@@ -1,6 +1,6 @@
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import ts from 'typescript'
 
@@ -22,11 +22,14 @@ const transpile = async (sourcePath, outputName) => {
   for (const diagnostic of result.diagnostics ?? []) {
     errors.push(`${sourcePath}: ${ts.flattenDiagnosticMessageText(diagnostic.messageText, '\n')}`)
   }
-  await writeFile(join(temporaryDirectory, outputName), result.outputText)
+  const outputPath = join(temporaryDirectory, outputName)
+  await mkdir(dirname(outputPath), { recursive: true })
+  await writeFile(outputPath, result.outputText)
 }
 
 try {
   await transpile('src/data/fields.ts', 'fields.js')
+  await transpile('src/data/questions/ipa/ap/r07-autumn-morning.ts', 'questions/ipa/ap/r07-autumn-morning.js')
   await transpile('src/data/questions.ts', 'questions.js')
   await transpile('src/data/ipaPastExams.ts', 'ipaPastExams.js')
   const [{ FIELD_NAMES }, { questions }, { ipaPastExamCatalog }] = await Promise.all([
@@ -81,6 +84,7 @@ try {
     }
     if (!choiceKeys.includes(question?.correctAnswer)) errors.push(`${label}: correctAnswer は ア・イ・ウ・エ のいずれかにしてください。`)
 
+    requireText('officialAnswerText', question?.officialAnswerText)
     requireText('sourceName', question?.sourceName)
     requireText('sourceUrl', question?.sourceUrl)
     if (typeof question?.isQuoteFromIpa !== 'boolean') errors.push(`${label}: isQuoteFromIpa は boolean にしてください。`)
@@ -93,7 +97,11 @@ try {
       errors.push(`${label}: explanation がありません。`)
     } else {
       requireText('explanation.correctReason', question.explanation.correctReason)
-      if (!question.explanation.wrongReasons || typeof question.explanation.wrongReasons !== 'object' || Array.isArray(question.explanation.wrongReasons)) errors.push(`${label}: explanation.wrongReasons がありません。`)
+      if (!question.explanation.wrongReasons || typeof question.explanation.wrongReasons !== 'object' || Array.isArray(question.explanation.wrongReasons)) {
+        errors.push(`${label}: explanation.wrongReasons がありません。`)
+      } else if (question?.isQuoteFromIpa === true) {
+        choiceKeys.filter(key => key !== question.correctAnswer).forEach(key => requireText(`explanation.wrongReasons.${key}`, question.explanation.wrongReasons[key]))
+      }
       if (!Array.isArray(question.explanation.points)) errors.push(`${label}: explanation.points は配列にしてください。`)
       if (!Array.isArray(question.explanation.keywords)) errors.push(`${label}: explanation.keywords は配列にしてください。`)
     }
@@ -126,6 +134,14 @@ try {
     if (!['morning', 'afternoon'].includes(item?.paperType)) errors.push(`${label}: paperType が不正です。`)
     requireText('title', item?.title)
     if (typeof item?.isReadyForImport !== 'boolean') errors.push(`${label}: isReadyForImport は boolean にしてください。`)
+    if (item?.importStatus !== undefined && !['not-imported', 'partial', 'imported'].includes(item.importStatus)) errors.push(`${label}: importStatus が不正です。`)
+    if (item?.importedQuestionCount !== undefined && (!Number.isInteger(item.importedQuestionCount) || item.importedQuestionCount < 0)) errors.push(`${label}: importedQuestionCount は0以上の整数にしてください。`)
+    if (item?.importStatus === 'imported') {
+      if (!Number.isInteger(item.importedQuestionCount) || item.importedQuestionCount < 1) errors.push(`${label}: imported の場合は importedQuestionCount が必要です。`)
+      const seasonLabel = item.period?.season === 'spring' ? '春期' : item.period?.season === 'autumn' ? '秋期' : undefined
+      const actualCount = (questions ?? []).filter(question => question.examYear === item.period?.year && question.examSeason === seasonLabel && question.examType === item.paperType && question.isQuoteFromIpa === true).length
+      if (actualCount !== item.importedQuestionCount) errors.push(`${label}: importedQuestionCount は実データ${actualCount}問と一致させてください。`)
+    }
     for (const key of ['questionPdfUrl', 'answerPdfUrl', 'commentaryPdfUrl', 'sourcePageUrl']) {
       const value = item?.[key]
       if (value !== undefined && (typeof value !== 'string' || value.trim() === '' || !/^https:\/\//.test(value))) errors.push(`${label}: ${key} は未確認なら省略し、設定する場合はHTTPS URLにしてください。`)
