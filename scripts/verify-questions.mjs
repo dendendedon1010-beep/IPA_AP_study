@@ -1,4 +1,4 @@
-import { access, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { access, mkdir, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { pathToFileURL } from 'node:url'
@@ -11,6 +11,10 @@ const ipaMorningIdPattern = /^ap-r\d{2}-(spring|autumn)-am-q\d{3}$/
 const ipaAfternoonIdPattern = /^ap-r\d{2}-(spring|autumn)-pm-q\d{2}(?:-sub\d{2})?$/
 const originalIdPattern = /^ap-original-am-[a-z0-9]+(?:-[a-z0-9]+)*-q\d{3}$/
 const errors = []
+const warnings = []
+const allowedImageExtensions = /\.(?:webp|png|jpe?g|svg)$/i
+const imageWarningSize = 500 * 1024
+const imageErrorSize = 1024 * 1024
 
 const transpile = async (sourcePath, outputName) => {
   const source = await readFile(new URL(sourcePath, root), 'utf8')
@@ -99,14 +103,22 @@ try {
             if (asset[key] !== undefined && typeof asset[key] !== 'string') errors.push(`${label}: ${assetLabel}.${key} は文字列にしてください。`)
           }
           if (typeof asset.src === 'string' && asset.src.trim() !== '') {
-            if (!asset.src.startsWith('/IPA_AP_STUDY/assets/')) {
-              errors.push(`${label}: ${assetLabel}.src は /IPA_AP_STUDY/assets/ で始めてください。`)
+            if (!asset.src.startsWith('/IPA_AP_STUDY/assets/ipa/ap/')) {
+              errors.push(`${label}: ${assetLabel}.src は /IPA_AP_STUDY/assets/ipa/ap/ で始めてください。`)
+            } else if (!allowedImageExtensions.test(asset.src)) {
+              errors.push(`${label}: ${assetLabel}.src の拡張子は .webp、.png、.jpg、.jpeg、.svg のいずれかにしてください。`)
             } else {
               const publicAssetUrl = new URL(`public${asset.src.slice('/IPA_AP_STUDY'.length)}`, root)
               try {
                 await access(publicAssetUrl)
+                const { size } = await stat(publicAssetUrl)
+                if (size > imageErrorSize) {
+                  errors.push(`${label}: ${assetLabel}.src の画像サイズが1MBを超えています（${size} bytes）。`)
+                } else if (size > imageWarningSize) {
+                  warnings.push(`${label}: ${assetLabel}.src の画像サイズが500KBを超えています（${size} bytes）。`)
+                }
               } catch {
-                errors.push(`${label}: ${assetLabel}.src に対応するファイルが public/assets/ にありません（${asset.src}）。`)
+                errors.push(`${label}: ${assetLabel}.src に対応するファイルが public/assets/ipa/ap/ にありません（${asset.src}）。`)
               }
             }
           }
@@ -227,6 +239,10 @@ try {
     }
   }
 
+  if (warnings.length > 0) {
+    console.warn(`問題データ検証で ${warnings.length} 件の警告が見つかりました。`)
+    warnings.forEach(warning => console.warn(`- ${warning}`))
+  }
   if (errors.length > 0) {
     console.error(`問題データ検証で ${errors.length} 件のエラーが見つかりました。`)
     errors.forEach(error => console.error(`- ${error}`))

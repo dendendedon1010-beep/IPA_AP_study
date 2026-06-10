@@ -36,7 +36,7 @@ import { buildReviewSchedule, getDueReviewItems, getReviewDayDistance, getReview
 import { clearMockExamResults, defaultSettings, deleteMockExamResult, loadBookmarks, loadHistory, loadMockExamResults, loadMockExamSession, loadSession, loadSettings, resetData, saveBookmarks, saveHistory, saveMockExamResults, saveMockExamSession, saveSession, saveSettings } from './lib/storage'
 import type { AnswerHistory, BookmarkStore, ChoiceKey, Confidence, MistakeTag, MockExamAnswer, MockExamResult, MockExamSession, PracticeMode, PracticeSession, Question, ReviewPriority, ReviewScheduleItem, Settings, Tab } from './types'
 
-const APP_VERSION = 'v2.10.0'
+const APP_VERSION = 'v2.11.0'
 const nav: { id: Tab; label: string; icon: typeof Home }[] = [
   { id: 'home', label: 'ホーム', icon: Home },
   { id: 'practice', label: '演習', icon: BookOpen },
